@@ -1,0 +1,2117 @@
+{
+  "rawMaterials": [
+    {
+      "category": "Baking Materials",
+      "name": "Maida (refined flour)",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 52.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Sugar (granulated)",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 81.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Icing sugar",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 75.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Butter (unsalted)",
+      "packSize": 500.0,
+      "unit": "g",
+      "packPrice": 290.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Refined oil",
+      "packSize": 1000.0,
+      "unit": "ml",
+      "packPrice": 145.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Eggs",
+      "packSize": 30.0,
+      "unit": "nos",
+      "packPrice": 210.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Milk (full cream)",
+      "packSize": 1000.0,
+      "unit": "ml",
+      "packPrice": 68.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Baking powder",
+      "packSize": 100.0,
+      "unit": "g",
+      "packPrice": 45.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Baking soda",
+      "packSize": 100.0,
+      "unit": "g",
+      "packPrice": 20.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Cocoa powder",
+      "packSize": 200.0,
+      "unit": "g",
+      "packPrice": 190.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Vanilla essence",
+      "packSize": 100.0,
+      "unit": "ml",
+      "packPrice": 120.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Red food colour gel",
+      "packSize": 25.0,
+      "unit": "g",
+      "packPrice": 130.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Cornstarch",
+      "packSize": 500.0,
+      "unit": "g",
+      "packPrice": 70.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Plain yogurt",
+      "packSize": 400.0,
+      "unit": "g",
+      "packPrice": 40.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Desiccated coconut",
+      "packSize": 200.0,
+      "unit": "g",
+      "packPrice": 70.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Salt",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 20.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "White vinegar",
+      "packSize": 500.0,
+      "unit": "ml",
+      "packPrice": 40.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Whipping cream",
+      "packSize": 1000.0,
+      "unit": "ml",
+      "packPrice": 380.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Dark chocolate (compound)",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 450.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Cream cheese",
+      "packSize": 200.0,
+      "unit": "g",
+      "packPrice": 150.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Strawberry crush",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 300.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Pineapple crush",
+      "packSize": 1000.0,
+      "unit": "g",
+      "packPrice": 280.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Mascarpone cheese",
+      "packSize": 500.0,
+      "unit": "g",
+      "packPrice": 650.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Rainbow sprinkles",
+      "packSize": 100.0,
+      "unit": "g",
+      "packPrice": 110.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Chocolate chips",
+      "packSize": 200.0,
+      "unit": "g",
+      "packPrice": 160.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Fresh strawberries",
+      "packSize": 250.0,
+      "unit": "g",
+      "packPrice": 120.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Oreo biscuits",
+      "packSize": 120.0,
+      "unit": "g",
+      "packPrice": 40.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Maraschino cherries",
+      "packSize": 250.0,
+      "unit": "g",
+      "packPrice": 200.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Chopped almonds",
+      "packSize": 100.0,
+      "unit": "g",
+      "packPrice": 90.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Fondant (ready to roll)",
+      "packSize": 500.0,
+      "unit": "g",
+      "packPrice": 280.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Toppings",
+      "name": "Acrylic cake topper",
+      "packSize": 1.0,
+      "unit": "nos",
+      "packPrice": 60.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake box 8x8x5 in (up to 1 kg)",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 250.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake box 10x10x6 in (1.5-2 kg)",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 380.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake box 12x12x6 in (3 kg)",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 520.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake box 14x14x8 in (4-5 kg)",
+      "packSize": 5.0,
+      "unit": "nos",
+      "packPrice": 450.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake board 8 in",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 180.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake board 10 in",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 250.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake board 12 in",
+      "packSize": 10.0,
+      "unit": "nos",
+      "packPrice": 350.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Cake board 14 in",
+      "packSize": 5.0,
+      "unit": "nos",
+      "packPrice": 250.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Candles & knife set",
+      "packSize": 20.0,
+      "unit": "nos",
+      "packPrice": 160.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Packaging",
+      "name": "Carry bag (printed)",
+      "packSize": 25.0,
+      "unit": "nos",
+      "packPrice": 375.0,
+      "notes": "",
+      "estimated": false
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Light brown sugar",
+      "packSize": 1000,
+      "unit": "g",
+      "packPrice": 90,
+      "notes": "ESTIMATED \u2014 confirm your pack price. Used in adapted chocolate sponge (source uses cane + light brown; her sheet maps both to granulated sugar).",
+      "estimated": true
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Brewed coffee / hot water",
+      "packSize": 1000,
+      "unit": "ml",
+      "packPrice": 40,
+      "notes": "ESTIMATED \u2014 confirm. Used to bloom cocoa in the adapted chocolate sponge. Water alone can be treated as \u20b90.",
+      "estimated": true
+    },
+    {
+      "category": "Baking Materials",
+      "name": "Lemon juice",
+      "packSize": 250,
+      "unit": "ml",
+      "packPrice": 60,
+      "notes": "ESTIMATED \u2014 confirm. Source coconut sponge uses lemon juice; her existing recipe substitutes white vinegar.",
+      "estimated": true
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Fresh mango (diced)",
+      "packSize": 1000,
+      "unit": "g",
+      "packPrice": 80,
+      "notes": "ESTIMATED \u2014 seasonal price, confirm. For adapted mango-coconut filling (companion to coconut sponge source).",
+      "estimated": true
+    },
+    {
+      "category": "Cooking Materials",
+      "name": "Mango puree",
+      "packSize": 850,
+      "unit": "g",
+      "packPrice": 160,
+      "notes": "ESTIMATED \u2014 confirm canned puree pack price.",
+      "estimated": true
+    }
+  ],
+  "recipes": [
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Milk (full cream)",
+      "qtyPerKg": 366.4,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "White vinegar",
+      "qtyPerKg": 22.9,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 269.7,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Refined oil",
+      "qtyPerKg": 122.1,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 10.2,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Cornstarch",
+      "qtyPerKg": 16.3,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Maida (refined flour)",
+      "qtyPerKg": 274.8,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking soda",
+      "qtyPerKg": 3.8,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking powder",
+      "qtyPerKg": 9.2,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Sponge",
+      "type": "Sponge",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.3,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Milk (full cream)",
+      "qtyPerKg": 223.9,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "White vinegar",
+      "qtyPerKg": 14.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 279.9,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Refined oil",
+      "qtyPerKg": 112.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 9.3,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Maida (refined flour)",
+      "qtyPerKg": 209.9,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Cocoa powder",
+      "qtyPerKg": 56.0,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking soda",
+      "qtyPerKg": 3.3,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking powder",
+      "qtyPerKg": 5.6,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Sponge",
+      "type": "Sponge",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Milk (full cream)",
+      "qtyPerKg": 299.4,
+      "unit": "ml"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "White vinegar",
+      "qtyPerKg": 13.6,
+      "unit": "ml"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Plain yogurt",
+      "qtyPerKg": 54.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Refined oil",
+      "qtyPerKg": 81.7,
+      "unit": "ml"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 272.2,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Red food colour gel",
+      "qtyPerKg": 6.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Maida (refined flour)",
+      "qtyPerKg": 326.6,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Cocoa powder",
+      "qtyPerKg": 20.0,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Cornstarch",
+      "qtyPerKg": 6.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking soda",
+      "qtyPerKg": 6.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.4,
+      "unit": "g"
+    },
+    {
+      "name": "Red Velvet Sponge",
+      "type": "Sponge",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 4.5,
+      "unit": "ml"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Milk (full cream)",
+      "qtyPerKg": 257.8,
+      "unit": "ml"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "White vinegar",
+      "qtyPerKg": 16.1,
+      "unit": "ml"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Plain yogurt",
+      "qtyPerKg": 85.9,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 268.5,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Refined oil",
+      "qtyPerKg": 91.3,
+      "unit": "ml"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 10.7,
+      "unit": "ml"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Maida (refined flour)",
+      "qtyPerKg": 236.3,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Desiccated coconut",
+      "qtyPerKg": 64.4,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Cornstarch",
+      "qtyPerKg": 17.2,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking powder",
+      "qtyPerKg": 10.7,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Baking soda",
+      "qtyPerKg": 1.3,
+      "unit": "g"
+    },
+    {
+      "name": "Coconut Sponge",
+      "type": "Sponge",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.6,
+      "unit": "g"
+    },
+    {
+      "name": "Whipped Cream",
+      "type": "Filling",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 800.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Whipped Cream",
+      "type": "Filling",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 100.0,
+      "unit": "g"
+    },
+    {
+      "name": "Whipped Cream",
+      "type": "Filling",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 3.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Ganache",
+      "type": "Filling",
+      "ingredient": "Dark chocolate (compound)",
+      "qtyPerKg": 600.0,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Ganache",
+      "type": "Filling",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 400.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Strawberry Cream",
+      "type": "Filling",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 700.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Strawberry Cream",
+      "type": "Filling",
+      "ingredient": "Strawberry crush",
+      "qtyPerKg": 300.0,
+      "unit": "g"
+    },
+    {
+      "name": "Strawberry Cream",
+      "type": "Filling",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 60.0,
+      "unit": "g"
+    },
+    {
+      "name": "Pineapple Cream",
+      "type": "Filling",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 700.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Pineapple Cream",
+      "type": "Filling",
+      "ingredient": "Pineapple crush",
+      "qtyPerKg": 300.0,
+      "unit": "g"
+    },
+    {
+      "name": "Pineapple Cream",
+      "type": "Filling",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 60.0,
+      "unit": "g"
+    },
+    {
+      "name": "Cream Cheese Filling",
+      "type": "Filling",
+      "ingredient": "Cream cheese",
+      "qtyPerKg": 600.0,
+      "unit": "g"
+    },
+    {
+      "name": "Cream Cheese Filling",
+      "type": "Filling",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 250.0,
+      "unit": "g"
+    },
+    {
+      "name": "Cream Cheese Filling",
+      "type": "Filling",
+      "ingredient": "Butter (unsalted)",
+      "qtyPerKg": 150.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream",
+      "type": "Filling",
+      "ingredient": "Eggs",
+      "qtyPerKg": 5.0,
+      "unit": "nos"
+    },
+    {
+      "name": "Swiss Meringue Buttercream",
+      "type": "Filling",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 330.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream",
+      "type": "Filling",
+      "ingredient": "Butter (unsalted)",
+      "qtyPerKg": 500.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream",
+      "type": "Filling",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 5.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Swiss Meringue Buttercream",
+      "type": "Filling",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Filling",
+      "type": "Filling",
+      "ingredient": "Mascarpone cheese",
+      "qtyPerKg": 500.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Filling",
+      "type": "Filling",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 400.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Mascarpone Cream Filling",
+      "type": "Filling",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 100.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Filling",
+      "type": "Filling",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 5.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Whipped Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 900.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Whipped Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 100.0,
+      "unit": "g"
+    },
+    {
+      "name": "Whipped Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 3.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Chocolate Ganache Frosting",
+      "type": "Frosting",
+      "ingredient": "Dark chocolate (compound)",
+      "qtyPerKg": 600.0,
+      "unit": "g"
+    },
+    {
+      "name": "Chocolate Ganache Frosting",
+      "type": "Frosting",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 400.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Buttercream",
+      "type": "Frosting",
+      "ingredient": "Butter (unsalted)",
+      "qtyPerKg": 420.0,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Buttercream",
+      "type": "Frosting",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 560.0,
+      "unit": "g"
+    },
+    {
+      "name": "Vanilla Buttercream",
+      "type": "Frosting",
+      "ingredient": "Milk (full cream)",
+      "qtyPerKg": 20.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Vanilla Buttercream",
+      "type": "Frosting",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 5.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Cream Cheese Frosting",
+      "type": "Frosting",
+      "ingredient": "Cream cheese",
+      "qtyPerKg": 500.0,
+      "unit": "g"
+    },
+    {
+      "name": "Cream Cheese Frosting",
+      "type": "Frosting",
+      "ingredient": "Butter (unsalted)",
+      "qtyPerKg": 150.0,
+      "unit": "g"
+    },
+    {
+      "name": "Cream Cheese Frosting",
+      "type": "Frosting",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 350.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream Frosting",
+      "type": "Frosting",
+      "ingredient": "Eggs",
+      "qtyPerKg": 5.0,
+      "unit": "nos"
+    },
+    {
+      "name": "Swiss Meringue Buttercream Frosting",
+      "type": "Frosting",
+      "ingredient": "Sugar (granulated)",
+      "qtyPerKg": 330.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream Frosting",
+      "type": "Frosting",
+      "ingredient": "Butter (unsalted)",
+      "qtyPerKg": 500.0,
+      "unit": "g"
+    },
+    {
+      "name": "Swiss Meringue Buttercream Frosting",
+      "type": "Frosting",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 5.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Swiss Meringue Buttercream Frosting",
+      "type": "Frosting",
+      "ingredient": "Salt",
+      "qtyPerKg": 1.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Mascarpone cheese",
+      "qtyPerKg": 500.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Whipping cream",
+      "qtyPerKg": 400.0,
+      "unit": "ml"
+    },
+    {
+      "name": "Mascarpone Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Icing sugar",
+      "qtyPerKg": 100.0,
+      "unit": "g"
+    },
+    {
+      "name": "Mascarpone Cream Frosting",
+      "type": "Frosting",
+      "ingredient": "Vanilla essence",
+      "qtyPerKg": 5.0,
+      "unit": "ml"
+    }
+  ],
+  "inventory": [
+    {
+      "item": "Maida (refined flour)",
+      "opening": 5000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 1000.0
+    },
+    {
+      "item": "Sugar (granulated)",
+      "opening": 5000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 1000.0
+    },
+    {
+      "item": "Icing sugar",
+      "opening": 2000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 500.0
+    },
+    {
+      "item": "Butter (unsalted)",
+      "opening": 2000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 500.0
+    },
+    {
+      "item": "Refined oil",
+      "opening": 2000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 500.0
+    },
+    {
+      "item": "Eggs",
+      "opening": 60.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 12.0
+    },
+    {
+      "item": "Milk (full cream)",
+      "opening": 3000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 1000.0
+    },
+    {
+      "item": "Baking powder",
+      "opening": 200.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 50.0
+    },
+    {
+      "item": "Baking soda",
+      "opening": 100.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 25.0
+    },
+    {
+      "item": "Cocoa powder",
+      "opening": 400.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Vanilla essence",
+      "opening": 200.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 50.0
+    },
+    {
+      "item": "Red food colour gel",
+      "opening": 50.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 10.0
+    },
+    {
+      "item": "Cornstarch",
+      "opening": 500.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Plain yogurt",
+      "opening": 400.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 200.0
+    },
+    {
+      "item": "Desiccated coconut",
+      "opening": 200.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 60.0
+    },
+    {
+      "item": "Salt",
+      "opening": 1000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 200.0
+    },
+    {
+      "item": "White vinegar",
+      "opening": 500.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Whipping cream",
+      "opening": 3000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 1000.0
+    },
+    {
+      "item": "Dark chocolate (compound)",
+      "opening": 2000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 500.0
+    },
+    {
+      "item": "Cream cheese",
+      "opening": 400.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 200.0
+    },
+    {
+      "item": "Strawberry crush",
+      "opening": 1000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 300.0
+    },
+    {
+      "item": "Pineapple crush",
+      "opening": 1000.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 300.0
+    },
+    {
+      "item": "Mascarpone cheese",
+      "opening": 500.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 250.0
+    },
+    {
+      "item": "Rainbow sprinkles",
+      "opening": 80.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Chocolate chips",
+      "opening": 400.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Fresh strawberries",
+      "opening": 500.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 250.0
+    },
+    {
+      "item": "Oreo biscuits",
+      "opening": 240.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 120.0
+    },
+    {
+      "item": "Maraschino cherries",
+      "opening": 250.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Chopped almonds",
+      "opening": 200.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 100.0
+    },
+    {
+      "item": "Fondant (ready to roll)",
+      "opening": 500.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 250.0
+    },
+    {
+      "item": "Acrylic cake topper",
+      "opening": 6.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 2.0
+    },
+    {
+      "item": "Cake box 8x8x5 in (up to 1 kg)",
+      "opening": 10.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 3.0
+    },
+    {
+      "item": "Cake box 10x10x6 in (1.5-2 kg)",
+      "opening": 8.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 3.0
+    },
+    {
+      "item": "Cake box 12x12x6 in (3 kg)",
+      "opening": 6.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 2.0
+    },
+    {
+      "item": "Cake box 14x14x8 in (4-5 kg)",
+      "opening": 4.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 2.0
+    },
+    {
+      "item": "Cake board 8 in",
+      "opening": 10.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 3.0
+    },
+    {
+      "item": "Cake board 10 in",
+      "opening": 8.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 3.0
+    },
+    {
+      "item": "Cake board 12 in",
+      "opening": 6.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 2.0
+    },
+    {
+      "item": "Cake board 14 in",
+      "opening": 4.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 2.0
+    },
+    {
+      "item": "Candles & knife set",
+      "opening": 40.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 10.0
+    },
+    {
+      "item": "Carry bag (printed)",
+      "opening": 25.0,
+      "purchased": 0.0,
+      "used": 0.0,
+      "reorderLevel": 8.0
+    },
+    {
+      "item": "Light brown sugar",
+      "opening": 0,
+      "purchased": 0,
+      "used": 0,
+      "reorderLevel": 0
+    },
+    {
+      "item": "Brewed coffee / hot water",
+      "opening": 0,
+      "purchased": 0,
+      "used": 0,
+      "reorderLevel": 0
+    },
+    {
+      "item": "Lemon juice",
+      "opening": 0,
+      "purchased": 0,
+      "used": 0,
+      "reorderLevel": 0
+    },
+    {
+      "item": "Fresh mango (diced)",
+      "opening": 0,
+      "purchased": 0,
+      "used": 0,
+      "reorderLevel": 0
+    },
+    {
+      "item": "Mango puree",
+      "opening": 0,
+      "purchased": 0,
+      "used": 0,
+      "reorderLevel": 0
+    }
+  ],
+  "settings": {
+    "fillingGPerKg": 80,
+    "crumbCoatGPerKgPerLayer": 30,
+    "finalFrostingGPerKgPerLayer": 60,
+    "wastage": 0.05,
+    "labourRate": 120,
+    "baseHours": 1.0,
+    "hoursPerKg": 0.5,
+    "hoursPerLayer": 0.25,
+    "hoursPerTopping": 0.25,
+    "overheads": {
+      "gas": 20,
+      "electricity": 25,
+      "water": 10,
+      "rent": 30,
+      "equipment": 15
+    },
+    "deliveryRatePerKm": 8,
+    "tripMultiplier": 2,
+    "minDelivery": 80,
+    "markup": 0.35,
+    "gst": 0.0,
+    "rounding": 10,
+    "sizes": [
+      {
+        "name": "0.5 kg",
+        "kg": 0.5,
+        "servings": "4-6"
+      },
+      {
+        "name": "1 kg",
+        "kg": 1.0,
+        "servings": "8-10"
+      },
+      {
+        "name": "1.5 kg",
+        "kg": 1.5,
+        "servings": "12-15"
+      },
+      {
+        "name": "2 kg",
+        "kg": 2.0,
+        "servings": "16-20"
+      },
+      {
+        "name": "3 kg",
+        "kg": 3.0,
+        "servings": "24-30"
+      },
+      {
+        "name": "4 kg",
+        "kg": 4.0,
+        "servings": "32-40"
+      },
+      {
+        "name": "5 kg",
+        "kg": 5.0,
+        "servings": "40-50"
+      }
+    ],
+    "layers": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "recipeMenu": [
+      {
+        "type": "Sponge",
+        "name": "Vanilla Sponge"
+      },
+      {
+        "type": "Sponge",
+        "name": "Chocolate Sponge"
+      },
+      {
+        "type": "Sponge",
+        "name": "Red Velvet Sponge"
+      },
+      {
+        "type": "Sponge",
+        "name": "Coconut Sponge"
+      },
+      {
+        "type": "Filling",
+        "name": "Whipped Cream"
+      },
+      {
+        "type": "Filling",
+        "name": "Chocolate Ganache"
+      },
+      {
+        "type": "Filling",
+        "name": "Strawberry Cream"
+      },
+      {
+        "type": "Filling",
+        "name": "Pineapple Cream"
+      },
+      {
+        "type": "Filling",
+        "name": "Cream Cheese Filling"
+      },
+      {
+        "type": "Filling",
+        "name": "Swiss Meringue Buttercream"
+      },
+      {
+        "type": "Filling",
+        "name": "Mascarpone Cream Filling"
+      },
+      {
+        "type": "Frosting",
+        "name": "Whipped Cream Frosting"
+      },
+      {
+        "type": "Frosting",
+        "name": "Chocolate Ganache Frosting"
+      },
+      {
+        "type": "Frosting",
+        "name": "Vanilla Buttercream"
+      },
+      {
+        "type": "Frosting",
+        "name": "Cream Cheese Frosting"
+      },
+      {
+        "type": "Frosting",
+        "name": "Swiss Meringue Buttercream Frosting"
+      },
+      {
+        "type": "Frosting",
+        "name": "Mascarpone Cream Frosting"
+      }
+    ],
+    "toppings": [
+      {
+        "name": "None",
+        "material": "",
+        "fixedQty": 0,
+        "qtyPerKg": 0
+      },
+      {
+        "name": "Rainbow sprinkles",
+        "material": "Rainbow sprinkles",
+        "fixedQty": 0,
+        "qtyPerKg": 15
+      },
+      {
+        "name": "Chocolate chips",
+        "material": "Chocolate chips",
+        "fixedQty": 0,
+        "qtyPerKg": 30
+      },
+      {
+        "name": "Fresh strawberries",
+        "material": "Fresh strawberries",
+        "fixedQty": 0,
+        "qtyPerKg": 120
+      },
+      {
+        "name": "Oreo crumble",
+        "material": "Oreo biscuits",
+        "fixedQty": 0,
+        "qtyPerKg": 40
+      },
+      {
+        "name": "Maraschino cherries",
+        "material": "Maraschino cherries",
+        "fixedQty": 0,
+        "qtyPerKg": 30
+      },
+      {
+        "name": "Chopped almonds",
+        "material": "Chopped almonds",
+        "fixedQty": 0,
+        "qtyPerKg": 25
+      },
+      {
+        "name": "Fondant decorations",
+        "material": "Fondant (ready to roll)",
+        "fixedQty": 0,
+        "qtyPerKg": 60
+      },
+      {
+        "name": "Acrylic cake topper",
+        "material": "Acrylic cake topper",
+        "fixedQty": 1,
+        "qtyPerKg": 0
+      }
+    ],
+    "boxes": [
+      "Cake box 8x8x5 in (up to 1 kg)",
+      "Cake box 10x10x6 in (1.5-2 kg)",
+      "Cake box 12x12x6 in (3 kg)",
+      "Cake box 14x14x8 in (4-5 kg)"
+    ],
+    "boards": [
+      "Cake board 8 in",
+      "Cake board 10 in",
+      "Cake board 12 in",
+      "Cake board 14 in"
+    ],
+    "addons": [
+      {
+        "name": "Candles & knife set",
+        "material": "Candles & knife set",
+        "qty": 1
+      },
+      {
+        "name": "Carry bag",
+        "material": "Carry bag (printed)",
+        "qty": 1
+      }
+    ]
+  },
+  "library": [
+    {
+      "id": "vanilla-sponge",
+      "name": "Vanilla Sponge (adapted)",
+      "type": "Sponge",
+      "label": "Adapted version",
+      "sourceName": "PastrybySaloni \u2014 Perfect Vanilla Birthday Cake",
+      "sourceUrl": "https://pastrybysaloni.com/perfect-vanilla-birthday-cake",
+      "sourceBatch": "Eggless, 2 \u00d7 8-inch layers, serves 10",
+      "scaledHow": "Source batch ~1,068 g raw batter, scaled to 1 kg baked cake (92% yield).",
+      "ingredients": [
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Milk (full cream)",
+          "qtyPerKg": 366.4,
+          "unit": "ml"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "White vinegar",
+          "qtyPerKg": 22.9,
+          "unit": "ml"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Sugar (granulated)",
+          "qtyPerKg": 269.7,
+          "unit": "g"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Refined oil",
+          "qtyPerKg": 122.1,
+          "unit": "ml"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 10.2,
+          "unit": "ml"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Cornstarch",
+          "qtyPerKg": 16.3,
+          "unit": "g"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Maida (refined flour)",
+          "qtyPerKg": 274.8,
+          "unit": "g"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking soda",
+          "qtyPerKg": 3.8,
+          "unit": "g"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking powder",
+          "qtyPerKg": 9.2,
+          "unit": "g"
+        },
+        {
+          "name": "Vanilla Sponge",
+          "type": "Sponge",
+          "ingredient": "Salt",
+          "qtyPerKg": 1.3,
+          "unit": "g"
+        }
+      ],
+      "method": [
+        "Heat the oven to 175\u00b0C. Grease and line two 8-inch tins.",
+        "Stir milk with vinegar and rest a few minutes so it thickens slightly.",
+        "Whisk in sugar, oil and vanilla until the sugar mostly dissolves.",
+        "Sift flour, cornstarch, baking powder, baking soda and salt into the bowl and mix just until smooth.",
+        "Divide between the tins and bake 20\u201322 minutes, until the tops spring back. Cool fully before filling or frosting."
+      ]
+    },
+    {
+      "id": "chocolate-sponge",
+      "name": "Chocolate Sponge (adapted)",
+      "type": "Sponge",
+      "label": "Adapted version",
+      "sourceName": "PastrybySaloni \u2014 Moist Chocolate Cake",
+      "sourceUrl": "https://pastrybysaloni.com/moist-chocolate-cake",
+      "sourceBatch": "Eggless, 2 \u00d7 8-inch layers, serves 10",
+      "scaledHow": "Source batch ~1,165 g raw batter. Hot coffee/water is counted in the batter but not costed in her original sheet; this adapted version costs a small amount of brewed coffee / hot water at an estimated price. Light + cane sugar are entered as granulated sugar, matching her sheet.",
+      "ingredients": [
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Milk (full cream)",
+          "qtyPerKg": 223.9,
+          "unit": "ml"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "White vinegar",
+          "qtyPerKg": 14.0,
+          "unit": "ml"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Sugar (granulated)",
+          "qtyPerKg": 279.9,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Refined oil",
+          "qtyPerKg": 112.0,
+          "unit": "ml"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 9.3,
+          "unit": "ml"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Maida (refined flour)",
+          "qtyPerKg": 209.9,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Cocoa powder",
+          "qtyPerKg": 56.0,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking soda",
+          "qtyPerKg": 3.3,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking powder",
+          "qtyPerKg": 5.6,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge",
+          "type": "Sponge",
+          "ingredient": "Salt",
+          "qtyPerKg": 1.4,
+          "unit": "g"
+        },
+        {
+          "name": "Chocolate Sponge (adapted)",
+          "type": "Sponge",
+          "ingredient": "Brewed coffee / hot water",
+          "qtyPerKg": 167.4,
+          "unit": "ml"
+        }
+      ],
+      "method": [
+        "Heat the oven to 175\u00b0C. Grease and line two 8-inch tins.",
+        "Mix milk and vinegar; rest 5 minutes.",
+        "Whisk in both sugars (here, all granulated), oil and vanilla.",
+        "Sift flour, cocoa, baking soda, baking powder and salt; fold into the wet mix until smooth.",
+        "Stir in hot coffee or boiling water to bloom the cocoa, split between tins, and bake 25\u201330 minutes. Cool completely."
+      ],
+      "notes": "Coffee is optional for flavour; boiling water works. Confirm the estimated coffee price before using this cost."
+    },
+    {
+      "id": "red-velvet-sponge",
+      "name": "Red Velvet Sponge (adapted)",
+      "type": "Sponge",
+      "label": "Adapted version",
+      "sourceName": "PastrybySaloni \u2014 Red Velvet Cake",
+      "sourceUrl": "https://pastrybysaloni.com/red-velvet-cake",
+      "sourceBatch": "Eggless, 2 \u00d7 8-inch layers, serves 10",
+      "scaledHow": "Source batch ~1,198 g raw batter, scaled to 1 kg. Her cream cheese frosting is a separate recipe.",
+      "ingredients": [
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Milk (full cream)",
+          "qtyPerKg": 299.4,
+          "unit": "ml"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "White vinegar",
+          "qtyPerKg": 13.6,
+          "unit": "ml"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Plain yogurt",
+          "qtyPerKg": 54.4,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Refined oil",
+          "qtyPerKg": 81.7,
+          "unit": "ml"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Sugar (granulated)",
+          "qtyPerKg": 272.2,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Red food colour gel",
+          "qtyPerKg": 6.4,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Maida (refined flour)",
+          "qtyPerKg": 326.6,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Cocoa powder",
+          "qtyPerKg": 20.0,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Cornstarch",
+          "qtyPerKg": 6.4,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking soda",
+          "qtyPerKg": 6.4,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Salt",
+          "qtyPerKg": 1.4,
+          "unit": "g"
+        },
+        {
+          "name": "Red Velvet Sponge",
+          "type": "Sponge",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 4.5,
+          "unit": "ml"
+        }
+      ],
+      "method": [
+        "Heat the oven to 175\u00b0C. Grease and line two 8-inch tins.",
+        "Combine milk, yogurt and vinegar; rest until slightly curdled.",
+        "Whisk in oil, sugar, vanilla and red gel colour.",
+        "Sift flour, cocoa, cornstarch, baking soda and salt; mix in just until smooth.",
+        "Bake 30\u201340 minutes until a skewer comes out clean. Cool fully, then level the tops before frosting."
+      ]
+    },
+    {
+      "id": "coconut-sponge",
+      "name": "Coconut Sponge (adapted)",
+      "type": "Sponge",
+      "label": "Adapted version",
+      "sourceName": "PastrybySaloni \u2014 Mango Coconut Cake (coconut sponge only)",
+      "sourceUrl": "https://pastrybysaloni.com/mango-coconut-cake",
+      "sourceBatch": "Eggless, 2 \u00d7 8-inch layers",
+      "scaledHow": "Taken from the coconut sponge in her Mango Coconut Cake. Batch ~1,012 g, scaled to 1 kg. Lemon juice in the source is swapped for white vinegar, matching her existing recipe.",
+      "ingredients": [
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Milk (full cream)",
+          "qtyPerKg": 257.8,
+          "unit": "ml"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "White vinegar",
+          "qtyPerKg": 16.1,
+          "unit": "ml"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Plain yogurt",
+          "qtyPerKg": 85.9,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Sugar (granulated)",
+          "qtyPerKg": 268.5,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Refined oil",
+          "qtyPerKg": 91.3,
+          "unit": "ml"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 10.7,
+          "unit": "ml"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Maida (refined flour)",
+          "qtyPerKg": 236.3,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Desiccated coconut",
+          "qtyPerKg": 64.4,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Cornstarch",
+          "qtyPerKg": 17.2,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking powder",
+          "qtyPerKg": 10.7,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Baking soda",
+          "qtyPerKg": 1.3,
+          "unit": "g"
+        },
+        {
+          "name": "Coconut Sponge",
+          "type": "Sponge",
+          "ingredient": "Salt",
+          "qtyPerKg": 1.6,
+          "unit": "g"
+        }
+      ],
+      "method": [
+        "Heat the oven to 175\u00b0C. Grease and line two 8-inch tins.",
+        "Stir milk, vinegar (or lemon juice) and yogurt; rest briefly.",
+        "Whisk in oil, sugar and vanilla, then stir through desiccated coconut.",
+        "Sift flour, cornstarch, baking powder, baking soda and salt; mix until just smooth.",
+        "Bake 25\u201330 minutes until springy. Cool, then level before filling."
+      ]
+    },
+    {
+      "id": "smbc",
+      "name": "Swiss Meringue Buttercream (adapted)",
+      "type": "Filling",
+      "label": "Adapted version \u2014 standard ratio, not from PastrybySaloni",
+      "sourceName": "Standard SMBC ratio",
+      "sourceUrl": "",
+      "sourceBatch": "Per 1 kg",
+      "scaledHow": "Egg whites are about 5 per kg; costed at the whole-egg price (slightly high).",
+      "ingredients": [
+        {
+          "name": "Swiss Meringue Buttercream",
+          "type": "Filling",
+          "ingredient": "Eggs",
+          "qtyPerKg": 5.0,
+          "unit": "nos"
+        },
+        {
+          "name": "Swiss Meringue Buttercream",
+          "type": "Filling",
+          "ingredient": "Sugar (granulated)",
+          "qtyPerKg": 330.0,
+          "unit": "g"
+        },
+        {
+          "name": "Swiss Meringue Buttercream",
+          "type": "Filling",
+          "ingredient": "Butter (unsalted)",
+          "qtyPerKg": 500.0,
+          "unit": "g"
+        },
+        {
+          "name": "Swiss Meringue Buttercream",
+          "type": "Filling",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 5.0,
+          "unit": "ml"
+        },
+        {
+          "name": "Swiss Meringue Buttercream",
+          "type": "Filling",
+          "ingredient": "Salt",
+          "qtyPerKg": 1.0,
+          "unit": "g"
+        }
+      ],
+      "method": [
+        "Warm egg whites with the sugar over a gentle water bath, stirring until the sugar dissolves and the mix is hot to the touch.",
+        "Whip to a glossy, cool meringue.",
+        "Beat in soft butter a little at a time, then vanilla and salt, until smooth and silky.",
+        "If it looks curdled, keep beating; if too soft, chill briefly and beat again."
+      ]
+    },
+    {
+      "id": "mascarpone",
+      "name": "Mascarpone Cream (adapted)",
+      "type": "Filling",
+      "label": "Adapted version \u2014 standard whipped mascarpone cream, not from PastrybySaloni",
+      "sourceName": "Standard whipped mascarpone cream",
+      "sourceUrl": "",
+      "sourceBatch": "Per 1 kg",
+      "scaledHow": "Mascarpone + whipping cream + icing sugar, per 1 kg.",
+      "ingredients": [
+        {
+          "name": "Mascarpone Cream Filling",
+          "type": "Filling",
+          "ingredient": "Mascarpone cheese",
+          "qtyPerKg": 500.0,
+          "unit": "g"
+        },
+        {
+          "name": "Mascarpone Cream Filling",
+          "type": "Filling",
+          "ingredient": "Whipping cream",
+          "qtyPerKg": 400.0,
+          "unit": "ml"
+        },
+        {
+          "name": "Mascarpone Cream Filling",
+          "type": "Filling",
+          "ingredient": "Icing sugar",
+          "qtyPerKg": 100.0,
+          "unit": "g"
+        },
+        {
+          "name": "Mascarpone Cream Filling",
+          "type": "Filling",
+          "ingredient": "Vanilla essence",
+          "qtyPerKg": 5.0,
+          "unit": "ml"
+        }
+      ],
+      "method": [
+        "Chill the bowl. Soften the mascarpone briefly so it is smooth but still cool.",
+        "Whip the cream with icing sugar and vanilla to soft peaks.",
+        "Fold the mascarpone through the cream until thick and spreadable. Do not over-whip.",
+        "Use the same day, or keep chilled and re-stir gently before spreading."
+      ]
+    }
+  ],
+  "orders": [],
+  "sampleOrder": {
+    "customer": "Sample order - birthday cake",
+    "size": "0.5 kg",
+    "layers": 2,
+    "sponge": "Chocolate Sponge",
+    "filling": "Chocolate Ganache",
+    "frosting": "Chocolate Ganache Frosting",
+    "topping1": "",
+    "topping2": "None",
+    "topping3": "None",
+    "box": "Cake box 8x8x5 in (up to 1 kg)",
+    "board": "Cake board 8 in",
+    "candles": false,
+    "carryBag": true,
+    "delivery": "Home delivery",
+    "distanceKm": 8,
+    "hoursOverride": null,
+    "expected": {
+      "weightKg": 0.5,
+      "servings": "4-6",
+      "suggestedHours": 1.75,
+      "hoursUsed": 1.75,
+      "spongeQty": 0.37,
+      "fillingQty": 0.04,
+      "crumbQty": 0.03,
+      "frostingQty": 0.06,
+      "spongeCost": 51.95795115,
+      "fillingCost": 17.724,
+      "crumbCost": 13.293,
+      "frostingCost": 26.586,
+      "ingredientCost": 109.5609512,
+      "toppingsCost": 0,
+      "packagingCost": 58,
+      "rawMaterialCost": 167.5609512,
+      "overheads": 100,
+      "labour": 210,
+      "totalCost": 477.5609512,
+      "profit": 167.1463329,
+      "priceBeforeDelivery": 644.7072841,
+      "delivery": 128,
+      "gst": 0,
+      "beforeRounding": 772.7072841,
+      "finalQuote": 780,
+      "pricePerKgExclDelivery": 1289.414568
+    }
+  }
+}
