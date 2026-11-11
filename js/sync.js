@@ -6,15 +6,16 @@ import { AppsScriptTransport, GoogleSheetsTransport, TransportError } from "./tr
 const CFG_KEY = "bakery.v2.sync";
 const QUEUE_KEY = "bakery.v2.queue";
 const META_KEY = "bakery.v2.syncMeta";
-export const DEFAULT_SHEET_ID = "1LgfA7HGWy-KA5PcA6qQ7d1omzuJwiWKXIgpjEIcvyQI";
+export const DEFAULT_SHEET_ID = "1D7WHn4xLK7OXzHITXlzMqZfhGnSb7nRqCV30SBBfty8";
+export const DEFAULT_CLIENT_ID = "160501963903-v5cqdm0hchp7ur5ohsulqlcmirnrhb45.apps.googleusercontent.com";
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 export function loadSyncConfig() {
   try {
-    return { mode: "local", url: "", token: "2468", clientId: "", spreadsheetId: DEFAULT_SHEET_ID, ...(JSON.parse(localStorage.getItem(CFG_KEY) || "{}")) };
+    return { mode: "local", url: "", token: "2468", clientId: DEFAULT_CLIENT_ID, spreadsheetId: DEFAULT_SHEET_ID, ...(JSON.parse(localStorage.getItem(CFG_KEY) || "{}")) };
   } catch {
-    return { mode: "local", url: "", token: "2468", clientId: "", spreadsheetId: DEFAULT_SHEET_ID };
+    return { mode: "local", url: "", token: "2468", clientId: DEFAULT_CLIENT_ID, spreadsheetId: DEFAULT_SHEET_ID };
   }
 }
 export function saveSyncConfig(cfg) { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
