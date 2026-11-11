@@ -8,7 +8,51 @@
 //     meta: { [tabName]: { sheetId, rowCount, columnCount } } }
 // Rows/cols in `values` are 0-based; cell writes use 1-based row/col.
 
-export const TABS = ["Raw Materials", "Recipes", "Settings", "Inventory", "Orders", "Recipe Library"];
+export const CORE_TABS = ["Raw Materials", "Recipes", "Settings", "Inventory", "Orders", "Recipe Library"];
+
+// Tabs the app creates itself (via the Sheets API addSheet) the first time she
+// saves something that has no home in the original workbook. Header row 1.
+// Columns are found by header name, so she can reorder them in the sheet.
+export const APP_TABS = {
+  Customers: {
+    key: ["id"],
+    cols: [
+      ["id", "Customer ID", "str"], ["name", "Name", "str"], ["phone", "Phone", "str"],
+      ["notes", "Notes", "str"], ["createdAt", "Created at", "str"],
+    ],
+  },
+  "Price List": {
+    key: ["kind", "item"],
+    cols: [["kind", "Kind", "str"], ["item", "Item", "str"], ["price", "Selling price (₹)", "num"], ["updatedAt", "Updated at", "str"]],
+  },
+  "Pricing Rules": {
+    key: ["id"],
+    cols: [
+      ["id", "Rule ID", "str"], ["name", "Rule", "str"], ["effect", "Effect", "str"], ["type", "Type", "str"],
+      ["amount", "Amount", "num"], ["active", "Active", "bool"], ["applyTo", "Apply to", "str"], ["notes", "Notes", "str"],
+    ],
+  },
+  "Delivery Zones": {
+    key: ["id"],
+    cols: [["id", "Zone ID", "str"], ["name", "Zone", "str"], ["charge", "Flat charge (₹)", "num"], ["notes", "Notes", "str"]],
+  },
+  "Recipe Notes": {
+    key: ["recipe"],
+    cols: [["recipe", "Recipe", "str"], ["type", "Type", "str"], ["method", "Method / notes", "str"], ["updatedAt", "Updated at", "str"]],
+  },
+  Purchases: {
+    key: ["id"],
+    cols: [
+      ["date", "Date", "str"], ["item", "Item", "str"], ["packs", "Packs", "num"], ["qty", "Qty added", "num"],
+      ["unit", "Unit", "str"], ["pricePerPack", "Price per pack (₹)", "num"], ["total", "Total (₹)", "num"],
+      ["notes", "Notes", "str"], ["id", "Purchase ID", "str"],
+    ],
+  },
+};
+// Read for layout only (the app never writes to it): its formulas and data
+// validations tell us how many rows of each Settings list the Calculator sees.
+export const READ_ONLY_TABS = ["Calculator"];
+export const TABS = [...CORE_TABS, ...READ_ONLY_TABS, ...Object.keys(APP_TABS)];
 
 export function norm(h) {
   return String(h ?? "")
@@ -107,6 +151,12 @@ export const SPECS = {
     addColumns: [
       { field: "updatedAt", header: "Updated at" },
       { field: "hoursOverride", header: "Hours override" },
+      { field: "priceOverride", header: "Price override (₹)" },
+      { field: "rulesApplied", header: "Rules applied" },
+      { field: "deliveryZone", header: "Delivery zone" },
+      { field: "extraAddons", header: "Other add-ons" },
+      { field: "paymentStatus", header: "Payment status" },
+      { field: "balance", header: "Balance (₹)" },
     ],
     fields: {
       id: { h: ["id", "order id"], t: "str" },
@@ -140,6 +190,12 @@ export const SPECS = {
       deliveryCharge: { h: ["delivery charge"], t: "num" },
       updatedAt: { h: ["updated at"], t: "str" },
       hoursOverride: { h: ["hours override"], t: "str" },
+      priceOverride: { h: ["price override"], t: "str" },
+      rulesApplied: { h: ["rules applied"], t: "str" },
+      deliveryZone: { h: ["delivery zone"], t: "str" },
+      extraAddons: { h: ["other add ons"], t: "str" },
+      paymentStatus: { h: ["payment status"], t: "str" },
+      balance: { h: ["balance"], t: "num" },
     },
   },
   "Recipe Library": {
@@ -159,6 +215,15 @@ export const SPECS = {
     },
   },
 };
+
+for (const [name, def] of Object.entries(APP_TABS)) {
+  const fields = {};
+  for (const [f, header, t] of def.cols) fields[f] = { h: [norm(header)], t };
+  SPECS[name] = { required: def.key.map((k) => fields[k].h[0]), key: def.key[0], keys: def.key, fields, appTab: true };
+}
+export function appTabHeaders(name) {
+  return APP_TABS[name].cols.map((c) => c[1]);
+}
 
 // Settings tab: label in column A, value in column B.
 export const SETTINGS_LABELS = {
@@ -254,7 +319,105 @@ function slug(s) {
   return String(s).toLowerCase().replace(/\(adapted\)/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-function parseSettings(t) {
+// ---------- Settings sub-tables (menus) ----------
+// Each list sits under its own header row. Rows inside a list may be blank
+// (reserved rows, or an item she removed): parsing skips them and stops at the
+// next section title ("6. Layers"), the next list header or a setting label.
+export const SECTIONS = {
+  sizes: { label: "Cake sizes", header: (row) => row[0] === "size name", keyCol: 0, cols: { name: 0, kg: 1, servings: 2 } },
+  layers: { label: "Layers", header: (row) => row[0] === "number of layers", keyCol: 0, cols: { value: 0 } },
+  recipeMenu: { label: "Recipe menu", header: (row) => row[0] === "type" && row[1] === "recipe name", keyCol: 1, cols: { type: 0, name: 1 } },
+  toppings: { label: "Toppings", header: (row) => row[0] === "topping name", keyCol: 0, cols: { name: 0, material: 1, unit: 2, fixedQty: 3, qtyPerKg: 4 } },
+  boxes: { label: "Cake boxes", header: (row) => row[0] === "cake box" && row[1] === "cost each", keyCol: 0, cols: { name: 0 } },
+  boards: { label: "Cake boards", header: (row) => row[0] === "cake board" && row[1] === "cost each", keyCol: 0, cols: { name: 0 } },
+  addons: { label: "Add-ons", header: (row) => row[0] === "add on", keyCol: 0, cols: { name: 0, material: 1, qty: 2 } },
+};
+const SETTING_LABEL_SET = new Set(Object.values(SETTINGS_LABELS));
+
+function findHeaderRow(t, pred) {
+  for (let r = 0; r < t.values.length; r++) {
+    const row = (t.values[r] || []).map(norm);
+    if (pred(row)) return r;
+  }
+  return -1;
+}
+function isBoundary(t, r) {
+  const raw = cell(t, r, 0);
+  if (typeof raw === "string" && /^\s*\d+\.\s+\D/.test(raw)) return true; // "6. Layers"
+  const row = (t.values[r] || []).map(norm);
+  if (Object.values(SECTIONS).some((sec) => sec.header(row))) return true;
+  return SETTING_LABEL_SET.has(row[0]);
+}
+
+/** A1 ranges on the Settings tab referenced by the Calculator (formulas + data validations). */
+export function settingsRefs(grid) {
+  const texts = [];
+  const calc = grid.tabs?.Calculator;
+  if (calc) for (const row of calc.formulas || []) for (const f of row || []) if (f) texts.push(f);
+  for (const v of grid.validationRefs || []) texts.push(String(v));
+  const out = [];
+  const re = /(?:'Settings'|\bSettings)!\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?/g;
+  const ci = (L) => { let n = 0; for (const ch of L) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
+  for (const txt of texts) {
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(txt))) {
+      const c1 = ci(m[1]), r1 = Number(m[2]) - 1;
+      const c2 = m[3] ? ci(m[3]) : c1, r2 = m[4] ? Number(m[4]) - 1 : r1;
+      if (r2 > r1) out.push({ c1: Math.min(c1, c2), c2: Math.max(c1, c2), r1, r2, a1: m[0] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Where a Settings list lives and which rows the app may write a new item into.
+ * Rows are 0-based. `allowed` = [first,last] rows a new item may use: inside every
+ * Calculator range that covers this list (or, with no such range, up to one blank
+ * row above the next section title). `free` = blank rows inside `allowed`.
+ */
+export function sectionLayout(t, key, refs = [], opts = {}) {
+  const sec = SECTIONS[key];
+  const hr = findHeaderRow(t, sec.header);
+  if (hr < 0) return null;
+  let boundary = null;
+  for (let r = hr + 1; r < t.values.length; r++) if (isBoundary(t, r)) { boundary = r; break; }
+  const stop = boundary ?? t.values.length;
+  const width = Math.max(lastNonBlank(t.values[hr] || []) + 1, ...Object.values(sec.cols).map((c) => c + 1));
+  const rows = [];
+  for (let r = hr + 1; r < stop; r++) if (!blank(cell(t, r, sec.keyCol))) rows.push(r);
+  const lastData = rows.length ? rows[rows.length - 1] : hr;
+  // Calculator ranges that cover this list's key column and start at its first rows
+  const firstData = rows.length ? rows[0] : hr + 1;
+  let related = refs.filter((x) => x.c1 <= sec.keyCol && x.c2 >= sec.keyCol && x.r1 <= Math.max(lastData, firstData) && x.r2 >= firstData && x.r1 >= hr && x.r1 < stop);
+  if (opts.matchRows) related = related.filter((x) => opts.matchRows.some((r) => r >= x.r1 && r <= x.r2));
+  let lo = hr + 1;
+  let hi = boundary != null ? boundary - 2 : Infinity;
+  if (related.length) {
+    lo = Math.max(lo, ...related.map((x) => x.r1));
+    hi = Math.min(...related.map((x) => x.r2));
+    if (boundary != null) hi = Math.min(hi, boundary - 1);
+  }
+  const isFreeRow = (r) => {
+    if (!blank(cell(t, r, sec.keyCol))) return false;
+    for (const c of Object.values(sec.cols)) if (!formulaAt(t, r, c) && !blank(cell(t, r, c))) return false;
+    return true;
+  };
+  const free = [];
+  const scanHi = hi === Infinity ? Math.max(lastData + 1, t.values.length) : hi;
+  for (let r = lo; r <= scanHi; r++) {
+    if (r >= stop && hi !== Infinity) break;
+    if (isFreeRow(r)) free.push(r);
+  }
+  if (hi === Infinity && !free.some((r) => r > lastData)) free.push(lastData + 1);
+  return {
+    key, header: hr, rows, boundary, width, lo, hi, free, related,
+    rangeText: related.length ? [...new Set(related.map((x) => x.a1.replace(/'/g, "")))].join(", ") : `Settings rows ${lo + 1}–${hi === Infinity ? "end" : hi + 1}`,
+  };
+}
+function lastNonBlank(arr) { let l = -1; arr.forEach((v, i) => { if (!blank(v)) l = i; }); return l; }
+
+function parseSettings(t, refs = []) {
   const s = { overheads: {} };
   const labelRow = {};
   for (let r = 0; r < t.values.length; r++) {
@@ -269,44 +432,50 @@ function parseSettings(t) {
       }
     }
   }
-  // sub-tables, found by their header row
-  const findHeader = (pred) => {
-    for (let r = 0; r < t.values.length; r++) {
-      const row = (t.values[r] || []).map(norm);
-      if (pred(row)) return r;
-    }
-    return -1;
+  const capacity = {};
+  const rowsOfSec = (key) => {
+    const lay = sectionLayout(t, key, refs);
+    if (!lay) return [];
+    capacity[key] = { free: lay.free.length, range: lay.rangeText, found: true };
+    return lay.rows;
   };
-  const tableRows = (hr) => {
-    const out = [];
-    if (hr < 0) return out;
-    for (let r = hr + 1; r < t.values.length; r++) {
-      if (blank(cell(t, r, 0))) break;
-      out.push(r);
-    }
-    return out;
-  };
-  const sizesH = findHeader((row) => row[0] === "size name");
-  s.sizes = tableRows(sizesH).map((r) => ({ name: str(cell(t, r, 0)), kg: num(cell(t, r, 1)), servings: fixServings(cell(t, r, 2)) }));
-  const layersH = findHeader((row) => row[0] === "number of layers");
-  s.layers = tableRows(layersH).map((r) => num(cell(t, r, 0))).filter((x) => x > 0);
-  const menuH = findHeader((row) => row[0] === "type" && row[1] === "recipe name");
-  s.recipeMenu = tableRows(menuH).map((r) => ({ type: str(cell(t, r, 0)), name: str(cell(t, r, 1)) })).filter((m) => m.name);
-  const topH = findHeader((row) => row[0] === "topping name");
-  s.toppings = tableRows(topH).map((r) => ({
+  s.sizes = rowsOfSec("sizes").map((r) => ({ name: str(cell(t, r, 0)), kg: num(cell(t, r, 1)), servings: fixServings(cell(t, r, 2)) }));
+  s.layers = rowsOfSec("layers").map((r) => num(cell(t, r, 0))).filter((x) => x > 0);
+  s.recipeMenu = rowsOfSec("recipeMenu").map((r) => ({ type: str(cell(t, r, 0)), name: str(cell(t, r, 1)) })).filter((m) => m.name);
+  s.toppings = rowsOfSec("toppings").map((r) => ({
     name: str(cell(t, r, 0)),
     material: str(cell(t, r, 1)),
     unit: str(cell(t, r, 2)),
     fixedQty: num(cell(t, r, 3)),
     qtyPerKg: num(cell(t, r, 4)),
   }));
-  const boxH = findHeader((row) => row[0] === "cake box" && row[1] === "cost each");
-  s.boxes = tableRows(boxH).map((r) => str(cell(t, r, 0)));
-  const boardH = findHeader((row) => row[0] === "cake board" && row[1] === "cost each");
-  s.boards = tableRows(boardH).map((r) => str(cell(t, r, 0)));
-  const addH = findHeader((row) => row[0] === "add on");
-  s.addons = tableRows(addH).map((r) => ({ name: str(cell(t, r, 0)), material: str(cell(t, r, 1)), qty: num(cell(t, r, 2)) }));
-  return { settings: s, labelRow };
+  s.boxes = rowsOfSec("boxes").map((r) => str(cell(t, r, 0)));
+  s.boards = rowsOfSec("boards").map((r) => str(cell(t, r, 0)));
+  s.addons = rowsOfSec("addons").map((r) => ({ name: str(cell(t, r, 0)), material: str(cell(t, r, 1)), qty: num(cell(t, r, 2)) }));
+  // per recipe type (Sponge / Filling / Frosting): Calculator ranges may cover one type only
+  for (const type of [...new Set(s.recipeMenu.map((m) => m.type))]) {
+    const lay = sectionLayout(t, "recipeMenu", refs, { matchRows: menuRowsOfType(t, type) });
+    if (lay) capacity["recipeMenu:" + type] = { free: lay.free.length, range: lay.rangeText, found: true };
+  }
+  return { settings: s, labelRow, capacity };
+}
+function menuRowsOfType(t, type) {
+  const hr = findHeaderRow(t, SECTIONS.recipeMenu.header);
+  const out = [];
+  if (hr < 0) return out;
+  for (let r = hr + 1; r < t.values.length; r++) {
+    if (isBoundary(t, r)) break;
+    if (str(cell(t, r, 0)) === type && !blank(cell(t, r, 1))) out.push(r);
+  }
+  return out;
+}
+
+function parseAppTab(grid, name) {
+  const t = tab(grid, name);
+  const spec = SPECS[name];
+  const loc = locateTable(t, spec);
+  if (!loc) return [];
+  return rowsOf(t, loc, spec, (r) => spec.keys.every((k) => !blank(r[k]))).map(({ _row, ...rest }) => rest);
 }
 
 /** Whole workbook -> app state. Also returns `base` (sheet values as loaded). */
@@ -347,7 +516,18 @@ export function parseWorkbook(grid) {
     : [];
 
   const st = tab(grid, "Settings");
-  state.settings = parseSettings(st).settings;
+  const refs = settingsRefs(grid);
+  const ps = parseSettings(st, refs);
+  state.settings = ps.settings;
+  state.capacity = ps.capacity;
+  state.sheetTabs = Object.keys(grid.tabs || {});
+
+  state.customers = parseAppTab(grid, "Customers");
+  state.priceList = parseAppTab(grid, "Price List").filter((p) => p.item);
+  state.rules = parseAppTab(grid, "Pricing Rules").map((r) => ({ ...r, effect: /disc/i.test(r.effect) ? "Discount" : "Charge", type: /₹|flat|rs|inr/i.test(r.type) ? "₹" : "%", applyTo: /tick|order form|choose/i.test(r.applyTo) ? "When ticked" : "Every order" }));
+  state.zones = parseAppTab(grid, "Delivery Zones");
+  state.recipeNotes = parseAppTab(grid, "Recipe Notes");
+  state.purchases = parseAppTab(grid, "Purchases");
 
   const od = tab(grid, "Orders");
   const odLoc = locateTable(od, SPECS.Orders);
@@ -373,6 +553,16 @@ export function parseWorkbook(grid) {
   return { state, problems };
 }
 
+export function splitList(v) {
+  return String(v ?? "").split(/\s*;\s*/).map((x) => x.trim()).filter(Boolean);
+}
+export function paymentStatusOf(paid, total) {
+  const p = Number(paid) || 0, t = Number(total) || 0;
+  if (t > 0 && p >= t - 0.5) return "Paid in full";
+  if (p > 0) return "Advance paid";
+  return "Unpaid";
+}
+
 export function orderFromRow(r) {
   const o = {
     id: r.id, createdAt: r.createdAt, customer: r.customer, phone: r.phone, size: r.size,
@@ -383,6 +573,10 @@ export function orderFromRow(r) {
     status: r.status || "Enquiry", advancePaid: r.advancePaid || 0, notes: r.notes,
     updatedAt: r.updatedAt || "",
     hoursOverride: blank(r.hoursOverride) ? null : Number(r.hoursOverride),
+    priceOverride: blank(r.priceOverride) || !isFinite(Number(r.priceOverride)) ? null : Number(r.priceOverride),
+    rules: splitList(r.rulesApplied),
+    zone: r.deliveryZone || "",
+    extraAddons: splitList(r.extraAddons),
     quoteSnapshot: null,
   };
   if (r.finalQuote) {
@@ -409,6 +603,12 @@ export function orderToFields(o) {
     rawMaterialCost: r2(q.rawMaterialCost), labour: r2(q.labour), deliveryCharge: r2(q.delivery),
     updatedAt: o.updatedAt || new Date().toISOString(),
     hoursOverride: o.hoursOverride == null || o.hoursOverride === "" ? "" : Number(o.hoursOverride),
+    priceOverride: o.priceOverride == null || o.priceOverride === "" ? "" : Number(o.priceOverride),
+    rulesApplied: (o.rules || []).join("; "),
+    deliveryZone: o.zone || "",
+    extraAddons: (o.extraAddons || []).join("; "),
+    paymentStatus: paymentStatusOf(o.advancePaid, q.finalQuote),
+    balance: r2(Math.max((Number(q.finalQuote) || 0) - (Number(o.advancePaid) || 0), 0)),
   };
 }
 
@@ -454,9 +654,12 @@ export function newId(prefix) {
  * Returns { cells, conflicts, done } where cells are
  *  {tab,row,col,value} or {tab,row,col,formula} (1-based), optional ifEmpty / expectKey {col,value}.
  */
-export function planWrites(grid, ops) {
+export function planWrites(grid, ops, opts = {}) {
+  const appTabsOk = opts.appTabs !== false;
   const cells = [];
   const conflicts = [];
+  const warnings = [];
+  const newTabs = [];
   const done = [];
   const nextFree = {};
   const locs = {};
@@ -567,8 +770,206 @@ export function planWrites(grid, ops) {
     }
   };
 
+
+  // ----- app-owned tabs (Customers, Price List, ...): create on first use -----
+  const ensureAppTab = (name) => {
+    const headers = appTabHeaders(name);
+    if (!grid.tabs) grid.tabs = {};
+    let t = grid.tabs[name];
+    if (!t) {
+      t = grid.tabs[name] = { values: [], formulas: [] };
+      newTabs.push({ title: name, headers });
+    }
+    const hasAny = t.values.some((row) => (row || []).some((v) => !blank(v)));
+    if (!hasAny) {
+      headers.forEach((h, i) => {
+        cells.push({ tab: name, row: 1, col: i + 1, value: h, ifEmpty: true, boot: true });
+        setCell(t, 0, i, h);
+      });
+    }
+    delete locs[name];
+    const l = loc(name);
+    if (!l) return null;
+    // a column she deleted by hand comes back at the end of the header row
+    for (const [f, h] of APP_TABS[name].cols.map((c) => [c[0], c[1]])) {
+      if (l.cols[f] === undefined) {
+        l.lastCol += 1;
+        l.cols[f] = l.lastCol;
+        cells.push({ tab: name, row: l.headerRow + 1, col: l.lastCol + 1, value: h, ifEmpty: true, boot: true });
+        setCell(t, l.headerRow, l.lastCol, h);
+      }
+    }
+    return l;
+  };
+  const findAppRow = (name, key) => {
+    const l = loc(name);
+    const t = tab(grid, name);
+    const keys = SPECS[name].keys;
+    for (let r = l.headerRow + 1; r < t.values.length; r++) {
+      if (keys.every((k) => str(cell(t, r, l.cols[k])) === String(key[k] ?? ""))) return r;
+    }
+    return -1;
+  };
+  const rowOp = (op) => {
+    const name = op.tab;
+    if (!appTabsOk) { conflicts.push({ op, reason: `the ${name} tab can only be written in “Sign in with Google” mode (Settings → Google Sheet sync)` }); return; }
+    const l = ensureAppTab(name);
+    if (!l) { conflicts.push({ op, reason: `${name} tab has no header row the app recognises` }); return; }
+    const t = tab(grid, name);
+    const spec = SPECS[name];
+    const guardField = spec.keys[spec.keys.length - 1];
+    const guardCol = l.cols[guardField];
+    let r = findAppRow(name, op.key);
+    if (op.remove) {
+      if (r < 0) { done.push(op); return; }
+      const guard = { expectKey: { col: guardCol + 1, value: str(cell(t, r, guardCol)) } };
+      const order = Object.entries(l.cols).sort((a, b) => (a[0] === guardField) - (b[0] === guardField));
+      for (const [, c] of order) {
+        if (formulaAt(t, r, c) || blank(cell(t, r, c))) continue;
+        pushValue(name, r, c, "", guard);
+      }
+      done.push(op);
+      return;
+    }
+    const fields = { ...op.key, ...op.fields };
+    if (r >= 0) {
+      const guard = { expectKey: { col: guardCol + 1, value: str(cell(t, r, guardCol)) } };
+      const order = Object.entries(fields).sort((a, b) => (spec.keys.includes(a[0]) ? 1 : 0) - (spec.keys.includes(b[0]) ? 1 : 0));
+      for (const [f, v] of order) {
+        const c = l.cols[f];
+        if (c === undefined || same(cell(t, r, c), v)) continue;
+        pushValue(name, r, c, v, guard);
+      }
+      done.push(op);
+      return;
+    }
+    r = freeRow(name);
+    cells.push({ tab: name, row: r + 1, col: guardCol + 1, value: fields[guardField], ifEmpty: true, keyCell: true, opRef: op.queuedAt });
+    setCell(t, r, guardCol, fields[guardField]);
+    const guard = { expectKey: { col: guardCol + 1, value: String(fields[guardField]) } };
+    for (const [f, v] of Object.entries(fields)) {
+      const c = l.cols[f];
+      if (c === undefined || f === guardField || blank(v)) continue;
+      cells.push({ tab: name, row: r + 1, col: c + 1, value: v, ifEmpty: true, ...guard });
+      setCell(t, r, c, v);
+    }
+    done.push(op);
+  };
+
+  // ----- Settings lists (sizes, layers, menu, toppings, boxes, boards, add-ons) -----
+  const menuOp = (op) => {
+    const t = tab(grid, "Settings");
+    const sec = SECTIONS[op.section];
+    if (!sec) { conflicts.push({ op, reason: "unknown list" }); return; }
+    const refs = settingsRefs(grid);
+    const base = sectionLayout(t, op.section, refs);
+    if (!base) { conflicts.push({ op, reason: `${sec.label} list not found in the Settings tab` }); return; }
+    const kc = sec.keyCol;
+    const keyStr = String(op.key);
+    const find = () => base.rows.find((r) => str(cell(t, r, kc)) === keyStr) ?? -1;
+    const r0 = find();
+    if (op.action === "add") {
+      if (r0 >= 0) { done.push(op); return; } // already there
+      let lay = base;
+      if (op.section === "recipeMenu" && op.fields.type) {
+        const same = base.rows.filter((r) => str(cell(t, r, 0)) === op.fields.type);
+        if (same.length) lay = sectionLayout(t, op.section, refs, { matchRows: same });
+      }
+      const r = lay.free[0];
+      if (r === undefined) {
+        conflicts.push({ op, full: true, reason: `${sec.label} list in the sheet is full (${lay.rangeText}). Clear an old row inside that block in the sheet, or ask to extend the Calculator's range.` });
+        return;
+      }
+      const near = [...base.rows].filter((x) => x < r).pop() ?? base.rows.find((x) => x > r);
+      const vals = { ...op.fields };
+      vals[Object.keys(sec.cols).find((f) => sec.cols[f] === kc)] = op.key;
+      cells.push({ tab: "Settings", row: r + 1, col: kc + 1, value: op.key, ifEmpty: true, keyCell: true, opRef: op.queuedAt });
+      setCell(t, r, kc, op.key);
+      const guard = { expectKey: { col: kc + 1, value: keyStr } };
+      for (const [f, c] of Object.entries(sec.cols)) {
+        if (c === kc) continue;
+        const v = vals[f];
+        if (blank(v) || formulaAt(t, r, c) || (near !== undefined && formulaAt(t, near, c))) continue;
+        cells.push({ tab: "Settings", row: r + 1, col: c + 1, value: v, ifEmpty: true, ...guard });
+        setCell(t, r, c, v);
+      }
+      if (near !== undefined) {
+        for (let c = 0; c < Math.max(base.width, (t.formulas?.[near] || []).length); c++) {
+          const f = formulaAt(t, near, c);
+          if (!f || formulaAt(t, r, c)) continue;
+          const nf = shiftFormula(f, r - near);
+          cells.push({ tab: "Settings", row: r + 1, col: c + 1, formula: nf, ifEmpty: true, ...guard });
+          setFormulaCell(t, r, c, nf);
+        }
+      }
+      done.push(op);
+      return;
+    }
+    if (r0 < 0) { conflicts.push({ op, reason: `${sec.label}: “${keyStr}” not found in the sheet (renamed or removed there?)` }); return; }
+    const guard = { expectKey: { col: kc + 1, value: keyStr } };
+    if (op.action === "remove") {
+      for (let c = 0; c < base.width; c++) {
+        if (c === kc || formulaAt(t, r0, c) || blank(cell(t, r0, c))) continue;
+        pushValue("Settings", r0, c, "", guard);
+      }
+      pushValue("Settings", r0, kc, "", guard);
+      done.push(op);
+      return;
+    }
+    // update (rename = new key value, written last)
+    let rename = null;
+    for (const [f, c] of Object.entries(sec.cols)) {
+      if (!(f in op.fields)) continue;
+      const v = op.fields[f];
+      if (same(cell(t, r0, c), v) || formulaAt(t, r0, c)) continue;
+      if (c === kc) { rename = v; continue; }
+      pushValue("Settings", r0, c, v, guard);
+    }
+    if (rename !== null && !blank(rename)) pushValue("Settings", r0, kc, rename, guard);
+    done.push(op);
+  };
+
+  const clearRecipeLine = (op) => {
+    const l = loc("Recipes");
+    if (!l) { conflicts.push({ op, reason: "Recipes layout not found" }); return; }
+    const r = findRecipeRow(op.key);
+    if (r < 0) { done.push(op); return; }
+    const t = tab(grid, "Recipes");
+    const idCol = l.cols.lineId;
+    const guard = { expectKey: { col: idCol + 1, value: str(cell(t, r, idCol)) } };
+    for (const f of ["name", "type", "ingredient", "qtyPerKg"]) {
+      const c = l.cols[f];
+      if (c === undefined || formulaAt(t, r, c) || blank(cell(t, r, c))) continue;
+      pushValue("Recipes", r, c, "", guard);
+    }
+    if (!blank(cell(t, r, idCol))) pushValue("Recipes", r, idCol, "", guard);
+    done.push(op);
+  };
+
+  // rows the sheet's own formulas look at, e.g. 'Raw Materials'!$B$5:$B$80
+  const formulaReach = (tabName) => {
+    let max = 0;
+    const re = new RegExp("(?:'" + tabName + "'|\\b" + tabName.replace(/ /g, "_") + ")!\\$?[A-Z]{1,3}\\$?\\d+:\\$?[A-Z]{1,3}\\$?(\\d+)", "g");
+    for (const tn of ["Settings", "Calculator", "Inventory"]) {
+      for (const row of grid.tabs?.[tn]?.formulas || []) for (const f of row || []) {
+        if (!f) continue;
+        let m;
+        re.lastIndex = 0;
+        while ((m = re.exec(f))) max = Math.max(max, Number(m[1]));
+      }
+    }
+    return max;
+  };
+  const warnReach = (op, tabName, r) => {
+    const reach = formulaReach(tabName);
+    if (reach && r + 1 > reach) warnings.push({ op, reason: `saved at ${tabName} row ${r + 1}, below row ${reach} that the sheet's own formulas read; the app prices it correctly, but the sheet's Calculator won't see it until you widen those ranges` });
+  };
+
   for (const op of ops) {
     try {
+      if (op.kind === "row") { rowOp(op); continue; }
+      if (op.kind === "menu") { menuOp(op); continue; }
+      if (op.kind === "clearRecipeLine") { clearRecipeLine(op); continue; }
       if (op.kind === "set" && op.tab === "Settings") {
         const t = tab(grid, "Settings");
         const { labelRow } = parseSettings(t);
@@ -627,6 +1028,7 @@ export function planWrites(grid, ops) {
         if (findRow("Raw Materials", "name", op.record.name) >= 0) { conflicts.push({ op, reason: "item already exists" }); continue; }
         const r = freeRow("Raw Materials");
         appendWithTemplate("Raw Materials", r, op.record, op.queuedAt);
+        warnReach(op, "Raw Materials", r);
         // Inventory mirrors Raw Materials row-for-row via formulas: add the same row number.
         const it = tab(grid, "Inventory");
         const il = loc("Inventory");
@@ -641,6 +1043,7 @@ export function planWrites(grid, ops) {
       } else if (op.kind === "append" && op.tab === "Recipes") {
         const r = freeRow("Recipes");
         appendWithTemplate("Recipes", r, op.record, op.queuedAt);
+        warnReach(op, "Recipes", r);
         done.push(op);
       } else {
         conflicts.push({ op, reason: "unknown operation" });
@@ -649,7 +1052,7 @@ export function planWrites(grid, ops) {
       conflicts.push({ op, reason: String(e && e.message) });
     }
   }
-  return { cells, conflicts, done };
+  return { cells, conflicts, warnings, done, newTabs };
 }
 
 function setFormulaCell(t, r, c, f) {

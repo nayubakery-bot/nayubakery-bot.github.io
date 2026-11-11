@@ -141,10 +141,20 @@ export class GoogleSheetsTransport {
     }
     const tabs = TABS.filter((t) => this.meta[t]);
     const q = tabs.map((t) => "ranges=" + encodeURIComponent(`'${t}'`)).join("&");
-    const [vals, forms] = await Promise.all([
+    // Data validations on the Calculator tab (dropdowns that read Settings ranges):
+    // used only to know how many rows of each Settings list the Calculator can see.
+    const dv = this.meta.Calculator
+      ? this._call(`/v4/spreadsheets/${this.id}?ranges=${encodeURIComponent("'Calculator'")}&fields=${encodeURIComponent("sheets(data(rowData(values(dataValidation(condition)))))")}`).catch(() => null)
+      : Promise.resolve(null);
+    const [vals, forms, dvBody] = await Promise.all([
       this._call(`/v4/spreadsheets/${this.id}/values:batchGet?${q}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`),
       this._call(`/v4/spreadsheets/${this.id}/values:batchGet?${q}&valueRenderOption=FORMULA`),
+      dv,
     ]);
+    const validationRefs = [];
+    for (const sh of dvBody?.sheets || []) for (const d of sh.data || []) for (const row of d.rowData || []) for (const v of row.values || []) {
+      for (const cv of v?.dataValidation?.condition?.values || []) if (cv.userEnteredValue) validationRefs.push(cv.userEnteredValue);
+    }
     const out = {};
     tabs.forEach((t, i) => {
       const values = vals.valueRanges?.[i]?.values || [];
@@ -154,10 +164,40 @@ export class GoogleSheetsTransport {
         formulas: f.map((row) => row.map((c) => (typeof c === "string" && c.startsWith("=") ? c : ""))),
       };
     });
-    return { tabs: out, meta: this.meta };
+    return { tabs: out, meta: this.meta, validationRefs };
+  }
+
+  /** Create app-owned tabs that don't exist yet (header row bold + frozen). */
+  async ensureTabs(titles) {
+    const missing = [...new Set(titles)].filter((t) => !this.meta?.[t]);
+    if (!missing.length) return;
+    const body = await this._call(`/v4/spreadsheets/${this.id}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ requests: missing.map((title) => ({ addSheet: { properties: { title, gridProperties: { rowCount: 1000, columnCount: 26, frozenRowCount: 1 } } } })) }),
+    });
+    const fmt = [];
+    (body.replies || []).forEach((r, i) => {
+      const p = r?.addSheet?.properties;
+      const title = p?.title || missing[i];
+      this.meta[title] = { sheetId: p?.sheetId, rowCount: p?.gridProperties?.rowCount || 1000, columnCount: p?.gridProperties?.columnCount || 26 };
+      if (p?.sheetId != null) fmt.push({ repeatCell: { range: { sheetId: p.sheetId, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: "userEnteredFormat.textFormat.bold" } });
+    });
+    if (fmt.length) await this._call(`/v4/spreadsheets/${this.id}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests: fmt }) }).catch(() => {});
+  }
+
+  /** Insert empty rows before 0-based row `at` (Sheets widens any range that spans it). Used only by "Make room". */
+  async insertRows(tabName, at, count) {
+    const m = this.meta?.[tabName];
+    if (!m) throw new TransportError(`${tabName} tab not found`, "error");
+    await this._call(`/v4/spreadsheets/${this.id}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ requests: [{ insertDimension: { range: { sheetId: m.sheetId, dimension: "ROWS", startIndex: at, endIndex: at + count }, inheritFromBefore: at > 0 } }] }),
+    });
   }
   async write(cells, pristine) {
     if (!cells.length) return { results: [] };
+    if (!this.meta) await this.read();
+    await this.ensureTabs(cells.map((c) => c.tab).filter((t) => !this.meta[t]));
     const results = new Array(cells.length);
     // New Orders rows go through values:append, which Google applies atomically
     // (two phones adding an order at the same moment each get their own row).

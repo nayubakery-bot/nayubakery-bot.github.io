@@ -74,6 +74,32 @@ function setValue(t, r, c, v) {
   put(t, r, c, "values", v);
 }
 
+// Insert empty rows into a tab and re-point every reference to it, like Sheets does
+// (a range that spans the insertion point grows; refs below it move down).
+function insertRows(wb, t, at, n) {
+  for (const which of ["values", "formulas"]) {
+    while (t[which].length < at) t[which].push([]);
+    t[which].splice(at, 0, ...Array.from({ length: n }, () => []));
+  }
+  t.maxRows += n;
+  const fix = (text, sameTab) => {
+    const name = t.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(?:((?:'${name}'|\\b${name})!)|(?<![!\\w$']))(\\$?)([A-Z]{1,3})(\\$?)(\\d+)(?::(\\$?)([A-Z]{1,3})(\\$?)(\\d+))?`, "g");
+    return text.split('"').map((part, i) => i % 2 ? part : part.replace(re, (m, tabRef, d1, c1, d2, r1, d3, c2, d4, r2) => {
+      if (!tabRef && !sameTab) return m;
+      const mv = (r) => (Number(r) - 1 >= at ? Number(r) + n : Number(r));
+      let a = mv(r1);
+      let b = r2 ? (Number(r2) - 1 >= at ? Number(r2) + n : Number(r2)) : null;
+      if (r2 && Number(r1) - 1 < at && Number(r2) - 1 >= at) { a = Number(r1); } // range spans the insert: grows
+      return `${tabRef || ""}${d1}${c1}${d2}${a}${r2 ? `:${d3}${c2}${d4}${b}` : ""}`;
+    })).join('"');
+  };
+  for (const tab of Object.values(wb.tabs)) {
+    tab.formulas = tab.formulas.map((row) => (row || []).map((f) => (f ? fix(f, tab === t) : f)));
+  }
+  if (wb.validationRefs) wb.validationRefs = wb.validationRefs.map((v) => fix(v, false));
+}
+
 // ---------- fake Apps Script services ----------
 function appsScriptContext(wb, props) {
   const sheetApi = (t) => {
@@ -182,6 +208,12 @@ export async function startMock({ port = 0, props = {} } = {}) {
         const m = a1.match(/^'?(.*?)'?(?:!([A-Z]+)(\d+))?$/);
         return { tab: m[1].replace(/''/g, "'"), col: m[2] ? colIndex(m[2]) : null, row: m[3] ? Number(m[3]) - 1 : null };
       };
+      if (req.method === "GET" && rest === id && /dataValidation/.test(url.searchParams.get("fields") || "")) {
+        stats.restReads++;
+        const refs = wb.validationRefs || [];
+        send(200, { sheets: [{ data: [{ rowData: refs.map((v) => ({ values: [{}, { dataValidation: { condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: v }] } } }] })) }] }] });
+        return;
+      }
       if (req.method === "GET" && rest === id) {
         stats.restReads++;
         send(200, { sheets: Object.values(wb.tabs).map((t) => ({ properties: { sheetId: t.sheetId, title: t.name, gridProperties: { rowCount: t.maxRows, columnCount: t.maxCols } } })) });
@@ -244,13 +276,30 @@ export async function startMock({ port = 0, props = {} } = {}) {
       if (req.method === "POST" && rest === id + ":batchUpdate") {
         stats.restWrites++;
         const b = JSON.parse(body);
+        const replies = [];
         for (const r of b.requests) {
-          const a = r.appendDimension;
-          const t = Object.values(wb.tabs).find((x) => x.sheetId === a.sheetId);
-          if (a.dimension === "COLUMNS") t.maxCols += a.length;
-          else t.maxRows += a.length;
+          if (r.appendDimension) {
+            const a = r.appendDimension;
+            const t = Object.values(wb.tabs).find((x) => x.sheetId === a.sheetId);
+            if (a.dimension === "COLUMNS") t.maxCols += a.length;
+            else t.maxRows += a.length;
+            replies.push({});
+          } else if (r.addSheet) {
+            const title = r.addSheet.properties.title;
+            if (wb.tabs[title]) { send(400, { error: { message: `A sheet with the name "${title}" already exists.` } }); return; }
+            const sheetId = 900000 + Object.keys(wb.tabs).length;
+            wb.tabs[title] = { name: title, sheetId, maxRows: 1000, maxCols: 26, values: [], formulas: [], formats: {} };
+            stats.addedSheets = [...(stats.addedSheets || []), title];
+            replies.push({ addSheet: { properties: { sheetId, title, gridProperties: { rowCount: 1000, columnCount: 26 } } } });
+          } else if (r.insertDimension) {
+            const d = r.insertDimension.range;
+            const t = Object.values(wb.tabs).find((x) => x.sheetId === d.sheetId);
+            insertRows(wb, t, d.startIndex, d.endIndex - d.startIndex);
+            stats.insertedRows = [...(stats.insertedRows || []), { tab: t.name, at: d.startIndex, n: d.endIndex - d.startIndex }];
+            replies.push({});
+          } else replies.push({});
         }
-        send(200, { replies: b.requests.map(() => ({})) });
+        send(200, { replies });
         return;
       }
     }

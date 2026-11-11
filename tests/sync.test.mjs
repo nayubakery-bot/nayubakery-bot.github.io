@@ -159,7 +159,7 @@ async function scenario(mode) {
   await engine.flush().catch(() => {});
   check(engine.status.state === "offline", "status Offline when the sheet can't be reached", engine.status.state);
   const q = JSON.parse(localStorage.getItem("bakery.v2.queue"));
-  check(q.length === 2, "2 edits waiting in the localStorage queue", q.map((x) => [x.kind, x.tab, x.key, x.field, x.id]));
+  check(q.length === 3 && q.filter((x) => x.kind === "row" && x.tab === "Customers").length === 1, "3 edits waiting in the localStorage queue (price, order, new customer)", q.map((x) => [x.kind, x.tab, x.key, x.field, x.id]));
   // simulate closing and reopening the app: new engine + store from storage
   engine.stop(); // the old page is closed
   mock.setDown(false);

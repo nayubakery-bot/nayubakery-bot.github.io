@@ -19,3 +19,16 @@ The original Excel file was not modified. This sheet holds Raw Materials, Recipe
 
 ## Recipe library
 Adapted (not verbatim) versions of sources listed in the workbook, credited to PastrybySaloni where applicable. Estimated raw-material prices are marked and must be confirmed.
+
+## v3: edit everything from the app
+All of these write back to the Google Sheet (or queue offline / stay on the phone in local mode):
+- **Menu** (More → Menu & sizes): add / rename / remove sizes, layers, sponges, fillings, frostings, toppings, boxes, boards, add-ons. Rows go only into empty rows inside the ranges the Calculator tab's dropdowns/formulas use; if a list is full, "Make room" (after a confirm) inserts 5 empty rows *inside* the block so Sheets widens those ranges.
+- **Selling prices** → new `Price List` tab; per-order "Your price for this order" override (saved in Orders → `Price override (₹)`).
+- **Price went up** (#/price-up): shows affected recipes/cakes, then updates Raw Materials.
+- **Recipes**: "+ New recipe", ✕ to clear a line, method notes (`Recipe Notes` tab).
+- **Inventory**: Log a purchase (`Purchases` tab, adds stock + updates price), low-stock alert = Inventory "Reorder level".
+- **Pricing rules & delivery** (`Pricing Rules`, `Delivery Zones` tabs): rush charge / festival discount toggles; flat-rate zones alongside per-km.
+- **Customers** (`Customers` tab): list, quick-fill on the order form by name/phone, order history.
+- **Payments**: advance / balance / paid in full, one-tap status chips (Orders → `Payment status`, `Balance (₹)`).
+
+New tabs are created on first use with a bold frozen header; new Orders columns are appended to the right of the header row. Formula cells are never overwritten and existing cells never move (except via the opt-in "Make room"). New tabs need "Sign in with Google" mode (Apps Script mode reports them as sync notes).

@@ -19,7 +19,13 @@ import {
   allRecipeCosts,
   recipeCostPerKg,
 } from "./calculator.js";
-import { parseWorkbook, orderToFields, compositeRecipeKey, newId } from "./sheet-model.js";
+import { parseWorkbook, orderToFields, compositeRecipeKey, newId, SECTIONS, paymentStatusOf } from "./sheet-model.js";
+
+const MENU_KEY = {
+  sizes: (x) => x.name, layers: (x) => String(x), recipeMenu: (x) => x.name, toppings: (x) => x.name,
+  boxes: (x) => x, boards: (x) => x, addons: (x) => x.name,
+};
+export const PRICE_KINDS = { sizes: "Size", toppings: "Topping", boxes: "Box", boards: "Board", addons: "Add-on" };
 
 function clone(v) {
   return JSON.parse(JSON.stringify(v));
@@ -72,6 +78,13 @@ export class Store {
       settings: clone(this.seed.settings),
       library: clone(this.seed.library),
       orders: clone(this.seed.orders || []),
+      customers: [],
+      priceList: [],
+      rules: [],
+      zones: [],
+      recipeNotes: [],
+      purchases: [],
+      capacity: {},
     };
   }
 
@@ -230,7 +243,10 @@ export class Store {
   }
 
   quote(input, st = this.state) {
-    return calculateQuote(input, { rawMaterials: st.rawMaterials, recipes: st.recipes, settings: st.settings });
+    return calculateQuote(input, {
+      rawMaterials: st.rawMaterials, recipes: st.recipes, settings: st.settings,
+      priceList: st.priceList || [], rules: st.rules || [], zones: st.zones || [],
+    });
   }
 
   inventoryRows() {
@@ -342,6 +358,10 @@ export class Store {
       delivery: order.delivery || "Pickup",
       distanceKm: Number(order.distanceKm || 0),
       hoursOverride: order.hoursOverride ?? null,
+      priceOverride: order.priceOverride ?? null,
+      rules: order.rules || [],
+      zone: order.zone || "",
+      extraAddons: order.extraAddons || [],
       deliveryDate: order.deliveryDate || "",
       status: order.status || "Enquiry",
       advancePaid: Number(order.advancePaid || 0),
@@ -354,6 +374,7 @@ export class Store {
     }
     this.state.orders.unshift(row);
     this._queueOrder(row, true);
+    this._rememberCustomer(row);
     this.persist();
     return row;
   }
@@ -366,12 +387,14 @@ export class Store {
     const quoteFields = [
       "size","layers","sponge","filling","frosting","topping1","topping2","topping3",
       "box","board","candles","carryBag","delivery","distanceKm","hoursOverride",
+      "priceOverride","rules","zone","extraAddons",
     ];
     if (!patch.quoteSnapshot && (quoteFields.some((k) => k in patch) || recalculate)) {
       next.quoteSnapshot = this.quote(next);
     }
     this.state.orders[i] = next;
     this._queueOrder(next, false);
+    if ("customer" in patch || "phone" in patch) this._rememberCustomer(next);
     this.persist();
     return next;
   }
@@ -400,6 +423,417 @@ export class Store {
     }
     this.state.settings = { ...cur, ...patch, overheads: { ...cur.overheads, ...(patch.overheads || {}) } };
     this.persist();
+  }
+
+  // ================= v3: everything editable from the app =================
+
+  _capKey(section, item) {
+    return section === "recipeMenu" ? "recipeMenu:" + item.type : section;
+  }
+  _checkRoom(section, item) {
+    if (!this.sheetMode) return;
+    const cap = this.state.capacity || {};
+    const c = cap[this._capKey(section, item)] || (section === "recipeMenu" ? cap.recipeMenu : null);
+    if (c && c.found && c.free <= 0) {
+      const label = SECTIONS[section].label;
+      const err = new Error(`The ${label} list in her sheet has no empty row left (${c.range}). Tap “Make room” to add 5 empty rows inside that block, or clear an old row in the sheet.`);
+      err.full = true;
+      throw err;
+    }
+    if (c) c.free -= 1;
+  }
+
+  /** Sheet list full: insert `count` empty rows inside it (Sheets widens the Calculator's ranges). */
+  makeRoom(section, type, count = 5) {
+    if (!this.sheetMode) return;
+    this._enqueue({ kind: "makeRoom", section, type: type || "", count });
+    const cap = this.state.capacity?.[section === "recipeMenu" && type ? "recipeMenu:" + type : section];
+    if (cap) cap.free += count;
+    this.persist();
+  }
+  roomLeft(section, type) {
+    if (!this.sheetMode) return null;
+    const cap = this.state.capacity?.[section === "recipeMenu" && type ? "recipeMenu:" + type : section];
+    return cap && cap.found ? cap : null;
+  }
+
+  /** Menu lists in Settings: sizes, layers, recipeMenu, toppings, boxes, boards, addons. */
+  addMenuItem(section, item) {
+    const s = this.state.settings;
+    const list = s[section];
+    const key = MENU_KEY[section](section === "layers" ? Number(item.value) : section === "boxes" || section === "boards" ? item.name : item);
+    if (!key || key === "0") throw new Error("Give it a name first");
+    if (list.some((x) => MENU_KEY[section](x) === key)) throw new Error(`“${key}” is already in the list`);
+    if (section === "recipeMenu" && !["Sponge", "Filling", "Frosting"].includes(item.type)) throw new Error("Pick Sponge, Filling or Frosting");
+    this._checkRoom(section, item);
+    // packaging / topping / add-on items are priced from a Raw Materials row
+    if (section === "boxes" || section === "boards") this._ensureMaterial(item.name, item.newMaterial, "Packaging");
+    if (section === "toppings" && item.material) this._ensureMaterial(item.material, item.newMaterial, "Toppings");
+    if (section === "addons" && item.material) this._ensureMaterial(item.material, item.newMaterial, "Packaging");
+    let rec, fields;
+    if (section === "sizes") { rec = { name: item.name, kg: Number(item.kg) || 0, servings: String(item.servings || "") }; fields = { kg: rec.kg, servings: rec.servings }; }
+    else if (section === "layers") { rec = Number(item.value); fields = {}; }
+    else if (section === "recipeMenu") { rec = { type: item.type, name: item.name }; fields = { type: item.type }; }
+    else if (section === "toppings") {
+      const unit = this.state.rawMaterials.find((m) => m.name === item.material)?.unit || "";
+      rec = { name: item.name, material: item.material || "", unit, fixedQty: Number(item.fixedQty) || 0, qtyPerKg: Number(item.qtyPerKg) || 0 };
+      fields = { material: rec.material, unit, fixedQty: rec.fixedQty, qtyPerKg: rec.qtyPerKg };
+    } else if (section === "boxes" || section === "boards") { rec = item.name; fields = {}; }
+    else if (section === "addons") { rec = { name: item.name, material: item.material || item.name, qty: Number(item.qty) || 1 }; fields = { material: rec.material, qty: rec.qty }; }
+    if (section === "layers") { list.push(rec); list.sort((a, b) => a - b); }
+    else if (section === "recipeMenu") {
+      const last = list.map((m) => m.type).lastIndexOf(item.type);
+      list.splice(last >= 0 ? last + 1 : list.length, 0, rec);
+    } else list.push(rec);
+    this._enqueue({ kind: "menu", section, action: "add", key: section === "layers" ? rec : key, fields });
+    if (item.sellingPrice != null && item.sellingPrice !== "" && PRICE_KINDS[section]) this.setSellingPrice(PRICE_KINDS[section], key, item.sellingPrice);
+    this.persist();
+    return rec;
+  }
+
+  updateMenuItem(section, key, patch) {
+    const list = this.state.settings[section];
+    const i = list.findIndex((x) => MENU_KEY[section](x) === String(key));
+    if (i < 0) return;
+    const cur = list[i];
+    const newName = patch.name != null ? String(patch.name).trim() : null;
+    if (newName !== null && newName !== String(key)) {
+      if (!newName) throw new Error("Name can't be empty");
+      if (list.some((x) => MENU_KEY[section](x) === newName)) throw new Error(`“${newName}” is already in the list`);
+    }
+    const fields = {};
+    let next = cur;
+    if (section === "sizes") {
+      next = { ...cur };
+      if ("kg" in patch) fields.kg = next.kg = Number(patch.kg) || 0;
+      if ("servings" in patch) fields.servings = next.servings = String(patch.servings);
+    } else if (section === "toppings") {
+      next = { ...cur };
+      for (const f of ["fixedQty", "qtyPerKg"]) if (f in patch) fields[f] = next[f] = Number(patch[f]) || 0;
+      if ("material" in patch) {
+        this._ensureMaterial(patch.material, patch.newMaterial, "Toppings");
+        fields.material = next.material = patch.material;
+        next.unit = this.state.rawMaterials.find((m) => m.name === patch.material)?.unit || "";
+        fields.unit = next.unit;
+      }
+    } else if (section === "addons") {
+      next = { ...cur };
+      if ("qty" in patch) fields.qty = next.qty = Number(patch.qty) || 0;
+      if ("material" in patch) { this._ensureMaterial(patch.material, patch.newMaterial, "Packaging"); fields.material = next.material = patch.material; }
+    } else if (section === "recipeMenu") {
+      next = { ...cur };
+    }
+    if (newName !== null && newName !== String(key)) {
+      const keyField = section === "layers" ? "value" : "name";
+      fields[keyField] = section === "layers" ? Number(newName) : newName;
+      if (section === "layers") next = Number(newName);
+      else if (section === "boxes" || section === "boards") next = newName;
+      else next = { ...next, name: newName };
+      this._renameEverywhere(section, String(key), newName);
+    }
+    list[i] = next;
+    if (Object.keys(fields).length) this._enqueue({ kind: "menu", section, action: "update", key: section === "layers" ? Number(key) : String(key), fields });
+    this.persist();
+    return next;
+  }
+
+  removeMenuItem(section, key) {
+    const list = this.state.settings[section];
+    const i = list.findIndex((x) => MENU_KEY[section](x) === String(key));
+    if (i < 0) return;
+    const [gone] = list.splice(i, 1);
+    const cap = this.state.capacity?.[this._capKey(section, gone)];
+    if (cap) cap.free += 1;
+    this._enqueue({ kind: "menu", section, action: "remove", key: section === "layers" ? Number(key) : String(key) });
+    if (PRICE_KINDS[section]) {
+      const p = (this.state.priceList || []).find((x) => x.kind === PRICE_KINDS[section] && x.item === String(key));
+      if (p) this.setSellingPrice(PRICE_KINDS[section], String(key), null);
+    }
+    this.persist();
+  }
+
+  /** Rename follow-through: recipe lines, price list, recipe notes, packaging material. */
+  _renameEverywhere(section, oldName, newName) {
+    if (section === "recipeMenu") {
+      for (const line of this.state.recipes) if (line.name === oldName) {
+        this._set("Recipes", line.key, "name", newName);
+        line.name = newName;
+      }
+      const note = (this.state.recipeNotes || []).find((n) => n.recipe === oldName);
+      if (note) {
+        this._enqueue({ kind: "row", tab: "Recipe Notes", key: { recipe: oldName }, fields: { recipe: newName } });
+        note.recipe = newName;
+      }
+    }
+    if (section === "boxes" || section === "boards") {
+      if (this.state.rawMaterials.some((m) => m.name === oldName) && !this.state.rawMaterials.some((m) => m.name === newName)) this.renameMaterial(oldName, newName);
+    }
+    const kind = PRICE_KINDS[section];
+    const p = kind && (this.state.priceList || []).find((x) => x.kind === kind && x.item === oldName);
+    if (p) {
+      this._enqueue({ kind: "row", tab: "Price List", key: { kind, item: oldName }, fields: { item: newName, updatedAt: new Date().toISOString() } });
+      p.item = newName;
+    }
+  }
+
+  _ensureMaterial(name, spec, category) {
+    if (!name || this.state.rawMaterials.some((m) => m.name === name)) return;
+    const m = spec || {};
+    this.addMaterial({
+      category: m.category || category, name, packSize: Number(m.packSize) || 1, unit: m.unit || "nos",
+      packPrice: Number(m.packPrice) || 0, notes: "", priceStatus: "", estimated: false,
+    });
+  }
+
+  /** Rename a raw material and every place that points at it by name. */
+  renameMaterial(oldName, newName) {
+    const m = this.state.rawMaterials.find((x) => x.name === oldName);
+    if (!m || !newName || oldName === newName) return;
+    if (this.state.rawMaterials.some((x) => x.name === newName)) throw new Error("Item name must be unique");
+    this._set("Raw Materials", oldName, "name", newName);
+    m.name = newName;
+    const inv = this.state.inventory.find((i) => i.item === oldName);
+    if (inv) inv.item = newName; // Inventory mirrors the name by formula
+    for (const line of this.state.recipes) if (line.ingredient === oldName) {
+      this._set("Recipes", line.key, "ingredient", newName);
+      line.ingredient = newName;
+    }
+    for (const t of this.state.settings.toppings) if (t.material === oldName) this.updateMenuItem("toppings", t.name, { material: newName });
+    for (const a of this.state.settings.addons) if (a.material === oldName) this.updateMenuItem("addons", a.name, { material: newName });
+    this.persist();
+  }
+
+  // ---------- selling prices ----------
+  sellingPrice(kind, item) {
+    const p = (this.state.priceList || []).find((x) => x.kind === kind && x.item === item);
+    return p && Number(p.price) > 0 ? Number(p.price) : null;
+  }
+  setSellingPrice(kind, item, price) {
+    const list = (this.state.priceList = this.state.priceList || []);
+    const i = list.findIndex((x) => x.kind === kind && x.item === item);
+    const val = price === "" || price == null || !(Number(price) > 0) ? null : Math.round(Number(price) * 100) / 100;
+    if (val == null) {
+      if (i >= 0) list.splice(i, 1);
+      this._enqueue({ kind: "row", tab: "Price List", key: { kind, item }, remove: true });
+    } else {
+      const rec = { kind, item, price: val, updatedAt: new Date().toISOString() };
+      if (i >= 0) list[i] = rec; else list.push(rec);
+      this._enqueue({ kind: "row", tab: "Price List", key: { kind, item }, fields: { price: val, updatedAt: rec.updatedAt } });
+    }
+    this.persist();
+  }
+
+  // ---------- "price went up" ----------
+  /** What changes if this item's pack price (and optionally pack size) changes. Nothing is saved. */
+  priceImpact(name, packPrice, packSize) {
+    const m = this.state.rawMaterials.find((x) => x.name === name);
+    if (!m) return null;
+    const after = { ...this.state, rawMaterials: this.state.rawMaterials.map((x) => (x.name === name ? { ...x, packPrice: Number(packPrice), packSize: packSize ? Number(packSize) : x.packSize } : x)) };
+    const before = this.recipeCosts();
+    const afterCosts = allRecipeCosts(after.recipes, after.rawMaterials);
+    const recipes = Object.keys(before)
+      .filter((r) => this.state.recipes.some((l) => l.name === r && l.ingredient === name))
+      .map((r) => ({ name: r, before: before[r], after: afterCosts[r] }));
+    const uses = [];
+    for (const t of this.state.settings.toppings) if (t.material === name) uses.push("Topping: " + t.name);
+    for (const b of [...this.state.settings.boxes, ...this.state.settings.boards]) if (b === name) uses.push(b);
+    for (const a of this.state.settings.addons) if (a.material === name) uses.push("Add-on: " + a.name);
+    const sample = this.seed.sampleOrder;
+    const sampleQuote = sample ? { before: this.quote(sample).finalQuote, after: this.quote(sample, after).finalQuote } : null;
+    const openOrders = this.visibleOrders.filter((o) => !["Delivered", "Paid", "Cancelled"].includes(o.status) && (this.quote(o).finalQuote !== this.quote(o, after).finalQuote)).length;
+    return { item: m, recipes, uses, sampleQuote, openOrders, costPerUnitBefore: costPerUnit(m), costPerUnitAfter: costPerUnit({ ...m, packPrice: Number(packPrice), packSize: packSize ? Number(packSize) : m.packSize }) };
+  }
+  priceWentUp(name, packPrice, packSize) {
+    const patch = { packPrice: Number(packPrice) };
+    if (packSize) patch.packSize = Number(packSize);
+    const m = this.state.rawMaterials.find((x) => x.name === name);
+    if (m && /estimated|sample/i.test(m.priceStatus || "")) patch.priceStatus = "Confirmed " + new Date().toISOString().slice(0, 10);
+    if (m && m.estimated) patch.estimated = false;
+    this.updateMaterial(name, patch);
+  }
+
+  // ---------- recipes ----------
+  createRecipe({ name, type, lines = [], method = "" }) {
+    name = String(name || "").trim();
+    if (!name) throw new Error("Give the recipe a name");
+    if (this.state.recipes.some((r) => r.name === name) || this.state.settings.recipeMenu.some((m) => m.name === name)) throw new Error("A recipe with that name already exists");
+    if (!["Sponge", "Filling", "Frosting"].includes(type)) throw new Error("Pick Sponge, Filling or Frosting");
+    const good = lines.filter((l) => l.ingredient && Number(l.qtyPerKg) > 0);
+    if (!good.length) throw new Error("Add at least one ingredient with its quantity per 1 kg");
+    this.addMenuItem("recipeMenu", { type, name }); // throws if the menu list is full
+    for (const l of good) this.addRecipeLine({ name, type, ingredient: l.ingredient, qtyPerKg: l.qtyPerKg });
+    if (method) this.setRecipeNotes(name, method, type);
+    this.persist();
+  }
+  removeRecipeLine(key) {
+    const i = this.state.recipes.findIndex((r) => r.key === key);
+    if (i < 0) return;
+    this.state.recipes.splice(i, 1);
+    this._enqueue({ kind: "clearRecipeLine", key });
+    this.persist();
+  }
+  recipeNotes(name) {
+    return (this.state.recipeNotes || []).find((n) => n.recipe === name)?.method || "";
+  }
+  setRecipeNotes(name, method, type) {
+    const list = (this.state.recipeNotes = this.state.recipeNotes || []);
+    const rec = list.find((n) => n.recipe === name);
+    const updatedAt = new Date().toISOString();
+    if (rec) Object.assign(rec, { method, updatedAt });
+    else list.push({ recipe: name, type: type || "", method, updatedAt });
+    this._enqueue({ kind: "row", tab: "Recipe Notes", key: { recipe: name }, fields: { type: type || rec?.type || "", method, updatedAt } });
+    this.persist();
+  }
+
+  // ---------- inventory ----------
+  logPurchase({ item, packs, pricePerPack, notes = "", date }) {
+    const m = this.state.rawMaterials.find((x) => x.name === item);
+    if (!m) throw new Error("Pick an item");
+    const n = Number(packs);
+    if (!(n > 0)) throw new Error("How many packs did she buy?");
+    const price = pricePerPack === "" || pricePerPack == null ? Number(m.packPrice) : Number(pricePerPack);
+    const qty = Math.round(n * Number(m.packSize) * 1000) / 1000;
+    let inv = this.state.inventory.find((i) => i.item === item);
+    if (!inv) { inv = { item, opening: 0, purchased: 0, used: 0, reorderLevel: 0 }; this.state.inventory.push(inv); }
+    this.updateInventory(item, { purchased: Math.round((Number(inv.purchased || 0) + qty) * 1000) / 1000 });
+    if (isFinite(price) && price > 0 && price !== Number(m.packPrice)) this.priceWentUp(item, price);
+    const rec = {
+      id: newId("P"), date: date || new Date().toISOString().slice(0, 10), item, packs: n, qty, unit: m.unit,
+      pricePerPack: price, total: Math.round(price * n * 100) / 100, notes,
+    };
+    (this.state.purchases = this.state.purchases || []).push(rec);
+    const { id, ...fields } = rec;
+    this._enqueue({ kind: "row", tab: "Purchases", key: { id }, fields });
+    this.persist();
+    return rec;
+  }
+
+  // ---------- pricing rules ----------
+  saveRule(rule) {
+    const list = (this.state.rules = this.state.rules || []);
+    const name = String(rule.name || "").trim();
+    if (!name) throw new Error("Give the rule a name");
+    const rec = {
+      id: rule.id || newId("RULE"), name, effect: rule.effect === "Discount" ? "Discount" : "Charge",
+      type: rule.type === "₹" ? "₹" : "%", amount: Number(rule.amount) || 0, active: !!rule.active,
+      applyTo: rule.applyTo === "When ticked" ? "When ticked" : "Every order", notes: rule.notes || "",
+    };
+    if (list.some((r) => r.name === name && r.id !== rec.id)) throw new Error("A rule with that name already exists");
+    const i = list.findIndex((r) => r.id === rec.id);
+    if (i >= 0) list[i] = rec; else list.push(rec);
+    const { id, ...fields } = rec;
+    this._enqueue({ kind: "row", tab: "Pricing Rules", key: { id }, fields: { ...fields, active: rec.active ? "Yes" : "No" } });
+    this.persist();
+    return rec;
+  }
+  removeRule(id) {
+    this.state.rules = (this.state.rules || []).filter((r) => r.id !== id);
+    this._enqueue({ kind: "row", tab: "Pricing Rules", key: { id }, remove: true });
+    this.persist();
+  }
+  /** Rules ticked by default on a new order. */
+  defaultRules() {
+    return (this.state.rules || []).filter((r) => r.active && r.applyTo === "Every order").map((r) => r.name);
+  }
+
+  // ---------- delivery zones ----------
+  saveZone(z) {
+    const list = (this.state.zones = this.state.zones || []);
+    const name = String(z.name || "").trim();
+    if (!name) throw new Error("Give the zone a name");
+    const rec = { id: z.id || newId("Z"), name, charge: Number(z.charge) || 0, notes: z.notes || "" };
+    if (list.some((x) => x.name === name && x.id !== rec.id)) throw new Error("A zone with that name already exists");
+    const i = list.findIndex((x) => x.id === rec.id);
+    if (i >= 0) list[i] = rec; else list.push(rec);
+    const { id, ...fields } = rec;
+    this._enqueue({ kind: "row", tab: "Delivery Zones", key: { id }, fields });
+    this.persist();
+    return rec;
+  }
+  removeZone(id) {
+    this.state.zones = (this.state.zones || []).filter((z) => z.id !== id);
+    this._enqueue({ kind: "row", tab: "Delivery Zones", key: { id }, remove: true });
+    this.persist();
+  }
+
+  // ---------- customers ----------
+  _phoneKey(p) {
+    return String(p || "").replace(/\D/g, "").slice(-10);
+  }
+  findCustomer({ name, phone }) {
+    const list = this.state.customers || [];
+    const pk = this._phoneKey(phone);
+    if (pk) { const c = list.find((x) => this._phoneKey(x.phone) === pk); if (c) return c; }
+    const nm = String(name || "").trim().toLowerCase();
+    return nm ? list.find((x) => String(x.name).trim().toLowerCase() === nm && (!pk || !this._phoneKey(x.phone))) : null;
+  }
+  saveCustomer(c) {
+    const list = (this.state.customers = this.state.customers || []);
+    const name = String(c.name || "").trim();
+    if (!name) throw new Error("Customer name is required");
+    const prev = c.id ? list.find((x) => x.id === c.id) : null;
+    const rec = { id: c.id || newId("C"), name, phone: String(c.phone || "").trim(), notes: c.notes || "", createdAt: prev?.createdAt || c.createdAt || new Date().toISOString().slice(0, 10) };
+    if (prev) Object.assign(prev, rec); else list.push(rec);
+    const { id, ...fields } = rec;
+    this._enqueue({ kind: "row", tab: "Customers", key: { id }, fields });
+    this.persist();
+    return rec;
+  }
+  removeCustomer(id) {
+    this.state.customers = (this.state.customers || []).filter((c) => c.id !== id);
+    this._enqueue({ kind: "row", tab: "Customers", key: { id }, remove: true });
+    this.persist();
+  }
+  _rememberCustomer(o) {
+    const name = String(o.customer || "").trim();
+    if (!name || /^quote$|^sample order/i.test(name)) return;
+    const c = this.findCustomer({ name, phone: o.phone });
+    if (!c) this.saveCustomer({ name, phone: o.phone });
+    else if (!c.phone && o.phone) this.saveCustomer({ ...c, phone: o.phone });
+  }
+  ordersOf(c) {
+    const pk = this._phoneKey(c.phone);
+    const nm = String(c.name || "").trim().toLowerCase();
+    return this.visibleOrders.filter((o) => (pk && this._phoneKey(o.phone) === pk) || (!pk && String(o.customer || "").trim().toLowerCase() === nm));
+  }
+  /** Saved customers plus anyone found only in past orders. */
+  customerRows() {
+    const out = (this.state.customers || []).map((c) => ({ ...c, saved: true }));
+    for (const o of this.visibleOrders) {
+      const name = String(o.customer || "").trim();
+      if (!name || /^quote$|^sample order/i.test(name)) continue;
+      const pk = this._phoneKey(o.phone);
+      const hit = out.find((c) => (pk && this._phoneKey(c.phone) === pk) || (!pk && !this._phoneKey(c.phone) && c.name.toLowerCase() === name.toLowerCase()));
+      if (!hit) out.push({ id: "", name, phone: o.phone || "", notes: "", saved: false });
+    }
+    return out.map((c) => {
+      const orders = this.ordersOf(c).filter((o) => o.status !== "Cancelled");
+      const last = orders.map((o) => o.deliveryDate || o.createdAt).sort().pop() || "";
+      return { ...c, orders: orders.length, spent: orders.reduce((s, o) => s + Number(o.quoteSnapshot?.finalQuote || 0), 0), last };
+    }).sort((a, b) => String(b.last).localeCompare(String(a.last)) || a.name.localeCompare(b.name));
+  }
+
+  // ---------- payments + status ----------
+  paymentOf(o) {
+    const total = Number(o.quoteSnapshot?.finalQuote || 0);
+    const paid = Number(o.advancePaid || 0);
+    return { total, paid, balance: Math.max(total - paid, 0), status: paymentStatusOf(paid, total) };
+  }
+  recordPayment(id, amount) {
+    const o = this.state.orders.find((x) => x.id === id);
+    const a = Number(amount);
+    if (!o || !(a > 0)) throw new Error("Enter the amount received");
+    return this.updateOrder(id, { advancePaid: Math.round((Number(o.advancePaid || 0) + a) * 100) / 100 });
+  }
+  markPaidInFull(id) {
+    const o = this.state.orders.find((x) => x.id === id);
+    if (!o) return;
+    const patch = { advancePaid: Number(o.quoteSnapshot?.finalQuote || o.advancePaid || 0) };
+    if (o.status === "Delivered") patch.status = "Paid";
+    return this.updateOrder(id, patch);
+  }
+  setStatus(id, status) {
+    return this.updateOrder(id, { status });
   }
 
   dashboard(now = new Date()) {

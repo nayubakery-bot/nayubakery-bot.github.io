@@ -1,6 +1,6 @@
 // Sync engine: offline write queue + reads on load / manual refresh only.
 // No polling and no focus/visibility refresh (by design).
-import { planWrites } from "./sheet-model.js";
+import { planWrites, sectionLayout, settingsRefs } from "./sheet-model.js";
 import { AppsScriptTransport, GoogleSheetsTransport, TransportError } from "./transports.js";
 
 const CFG_KEY = "bakery.v2.sync";
@@ -30,7 +30,8 @@ function sameTarget(a, b) {
   if (a.kind === "append") return a.queuedAt === b.queuedAt;
   if (a.kind === "set") return a.tab === b.tab && a.key === b.key && a.field === b.field;
   if (a.kind === "order") return a.id === b.id;
-  return false;
+  if (a.kind === "row") return a.tab === b.tab && JSON.stringify(a.key) === JSON.stringify(b.key);
+  return !!a.queuedAt && a.queuedAt === b.queuedAt; // menu / clearRecipeLine / makeRoom: each one is its own step
 }
 
 export class SyncEngine {
@@ -65,6 +66,7 @@ export class SyncEngine {
       const prev = this.queue[i];
       if (op.kind === "set") this.queue[i] = { ...op, base: prev.base };
       else if (op.kind === "order") this.queue[i] = { ...op, fields: { ...prev.fields, ...op.fields }, isNew: prev.isNew || op.isNew };
+      else if (op.kind === "row") this.queue[i] = op.remove ? { ...op, queuedAt: prev.queuedAt } : { ...op, remove: false, fields: { ...(prev.remove ? {} : prev.fields), ...op.fields }, queuedAt: prev.queuedAt };
     } else this.queue.push({ ...op, queuedAt: new Date().toISOString() + "#" + Math.random().toString(36).slice(2, 7) });
     this._saveQueue();
     if (!this.transport) return;
@@ -79,11 +81,33 @@ export class SyncEngine {
     if (this._running) { await this._running.catch(() => {}); if (!this.queue.length) return { written: 0 }; }
     const run = (async () => {
       this._set({ state: "syncing", message: "" });
-      const ops = clone(this.queue);
+      let ops = clone(this.queue);
       try {
-        const grid = await this.transport.read();
+        let grid = await this.transport.read();
+        // "Make room" (insert empty rows inside a full Settings list) runs first, on its own,
+        // then the sheet is read again so every other edit is planned on the new layout.
+        const rooms = ops.filter((o) => o.kind === "makeRoom");
+        if (rooms.length) {
+          const roomNotes = [];
+          for (const op of rooms) {
+            try {
+              const at = roomInsertRow(grid, op);
+              if (at == null) throw new Error("list not found in the Settings tab");
+              if (!this.transport.insertRows) throw new Error("this connection type can't insert rows");
+              await this.transport.insertRows("Settings", at, op.count || 5);
+              grid = await this.transport.read();
+            } catch (e) {
+              if (e instanceof TransportError && e.kind !== "error") throw e;
+              roomNotes.push({ at: new Date().toISOString(), what: `Make room in ${op.section}`, reason: e.message || String(e) });
+            }
+          }
+          this.queue = this.queue.filter((q) => !rooms.some((r) => r.queuedAt === q.queuedAt));
+          this._saveQueue();
+          ops = ops.filter((o) => o.kind !== "makeRoom");
+          if (roomNotes.length) this.status.conflicts = [...this.status.conflicts, ...roomNotes].slice(-20);
+        }
         const pristine = clone(grid);
-        const plan = planWrites(grid, ops);
+        const plan = planWrites(grid, ops, { appTabs: typeof this.transport.ensureTabs === "function" });
         const res = await this.transport.write(plan.cells, pristine);
         const skipped = (res.results || []).map((r, i) => (r.skipped ? { cell: plan.cells[i], reason: r.skipped } : null)).filter(Boolean);
         // every sent op was either written or resolved as a conflict: drop it,
@@ -100,13 +124,14 @@ export class SyncEngine {
         const conflicts = [
           ...this.status.conflicts,
           ...plan.conflicts.map((c) => ({ at: new Date().toISOString(), what: describe(c.op), reason: c.reason })),
+          ...(plan.warnings || []).map((c) => ({ at: new Date().toISOString(), what: describe(c.op), reason: c.reason, note: true })),
           ...skipped.filter((x) => !x.cell.boot && !x.cell.opRef && !(x.reason === "moved" && x.cell.ifEmpty)).map((x) => ({
             at: new Date().toISOString(),
             what: `${x.cell.tab} row ${x.cell.row}`,
             reason: x.reason === "formula" ? "cell has a formula; not overwritten" : x.reason === "moved" ? "row moved in the sheet; edit again" : "cell already filled; not overwritten",
           })),
         ].slice(-20);
-        this.onFlushed(plan.done.filter((o) => !retry.has(o.queuedAt)));
+        this.onFlushed(plan.done.filter((o) => !retry.has(o.queuedAt)), plan);
         if (retry.size) setTimeout(() => this.flush().catch(() => {}), 1500);
         this._set({ state: "synced", lastSynced: new Date().toISOString(), conflicts, message: plan.conflicts.length ? `${plan.conflicts.length} change(s) not applied — see Settings` : "" });
         return { written: plan.cells.length, cells: plan.cells, conflicts: plan.conflicts, results: res.results };
@@ -145,9 +170,28 @@ export class SyncEngine {
   }
 }
 
+/** 0-based row to insert empty rows before, so they land INSIDE the Calculator's ranges. */
+export function roomInsertRow(grid, op) {
+  const t = grid.tabs?.Settings;
+  if (!t) return null;
+  const refs = settingsRefs(grid);
+  let lay = sectionLayout(t, op.section, refs);
+  if (!lay) return null;
+  if (op.section === "recipeMenu" && op.type) {
+    const rows = lay.rows.filter((r) => String(t.values[r]?.[0] ?? "") === op.type);
+    if (rows.length) lay = sectionLayout(t, op.section, refs, { matchRows: rows });
+  }
+  const last = lay.rows.length ? lay.rows[lay.rows.length - 1] : lay.header;
+  if (lay.related.length) return Math.max(lay.hi, lay.lo); // before the range's last row: Sheets widens the range
+  return last + 1;
+}
+
 function describe(op) {
   if (op.kind === "set") return `${op.tab}: ${op.key} → ${op.field}`;
   if (op.kind === "order") return `Order ${op.id}`;
   if (op.kind === "append") return `${op.tab}: add ${op.record?.name || op.record?.ingredient || "row"}`;
+  if (op.kind === "row") return `${op.tab}: ${op.remove ? "remove" : "save"} ${Object.values(op.key || {}).join(" / ")}`;
+  if (op.kind === "menu") return `${op.section}: ${op.action} ${op.key}`;
+  if (op.kind === "clearRecipeLine") return `Recipes: remove line`;
   return op.kind;
 }

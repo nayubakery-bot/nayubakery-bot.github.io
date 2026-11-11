@@ -34,6 +34,14 @@ export function allRecipeCosts(recipes, rawMaterials) {
   return out;
 }
 
+/** The add-on behind the "Candles" / "Carry bag" tick boxes (works after a rename too). */
+export function findAddon(addons, which) {
+  const list = addons || [];
+  if (which === "candles") return list.find((a) => a.name === "Candles & knife set") || list.find((a) => /candle/i.test(a.name));
+  if (which === "carryBag") return list.find((a) => a.name === "Carry bag") || list.find((a) => /carry\s*bag|bag/i.test(a.name));
+  return null;
+}
+
 export function lookup(list, key, keyField, valueField, fallback = 0) {
   const row = list.find((x) => x[keyField] === key);
   if (!row) return fallback;
@@ -145,18 +153,28 @@ export function calculateQuote(input, data) {
   const boxCost = boxQty * boxRate;
   const boardCost = boardQty * boardRate;
 
-  const addonCandles = (settings.addons || []).find((a) => a.name === "Candles & knife set");
-  const addonBag = (settings.addons || []).find((a) => a.name === "Carry bag");
-  const candlesQty = input.candles && addonCandles ? n(addonCandles.qty) : 0;
-  const bagQty = input.carryBag && addonBag ? n(addonBag.qty) : 0;
-  const candlesRate = addonCandles ? rateOf(addonCandles.material) : 0;
-  const bagRate = addonBag ? rateOf(addonBag.material) : 0;
-  const candlesCost = candlesQty * candlesRate;
-  const bagCost = bagQty * bagRate;
+  // Add-ons: the two classic tick boxes plus any extra add-ons she created.
+  const addons = settings.addons || [];
+  const candleAddon = findAddon(addons, "candles");
+  const bagAddon = findAddon(addons, "carryBag");
+  const addonLine = (a) => {
+    const qty = a ? n(a.qty) : 0;
+    const rate = a ? rateOf(a.material) : 0;
+    return { name: a ? a.name : "", material: a ? a.material : "", qty, unit: a ? unitOf(a.material) || "nos" : "nos", rate, cost: qty * rate };
+  };
+  const candlesLine = input.candles && candleAddon ? addonLine(candleAddon) : { qty: 0, rate: candleAddon ? rateOf(candleAddon.material) : 0, cost: 0 };
+  const bagLine = input.carryBag && bagAddon ? addonLine(bagAddon) : { qty: 0, rate: bagAddon ? rateOf(bagAddon.material) : 0, cost: 0 };
+  const candlesQty = candlesLine.qty, candlesRate = candlesLine.rate, candlesCost = candlesLine.cost;
+  const bagQty = bagLine.qty, bagRate = bagLine.rate, bagCost = bagLine.cost;
+  const extraAddonLines = (input.extraAddons || [])
+    .map((nm) => addons.find((a) => a.name === nm))
+    .filter((a) => a && a !== candleAddon && a !== bagAddon)
+    .map(addonLine);
+  const extraAddonsCost = extraAddonLines.reduce((s, l) => s + l.cost, 0);
 
   const ingredientCost = spongeCost + fillingCost + crumbCost + frostingCost;
   const toppingsCost = toppingLines.reduce((s, t) => s + t.cost, 0);
-  const packagingCost = boxCost + boardCost + candlesCost + bagCost;
+  const packagingCost = boxCost + boardCost + candlesCost + bagCost + extraAddonsCost;
   const rawMaterialCost = ingredientCost + toppingsCost + packagingCost;
 
   const hoursSuggested = suggestedHours({ ...input, weightKg }, settings);
@@ -168,19 +186,74 @@ export function calculateQuote(input, data) {
   const overheads = fixedOverheads(settings);
   const labour = hoursUsed * n(settings.labourRate);
   const totalCost = rawMaterialCost + overheads + labour;
-  const profit = totalCost * n(settings.markup);
-  const priceBeforeDelivery = totalCost + profit;
+  const markup = n(settings.markup);
+  const calcProfit = totalCost * markup;
+  const calculatedBeforeDelivery = totalCost + calcProfit;
+
+  // Menu price: when she has set a selling price for this size, the cake is priced
+  // from her price list (size price + each extra at its own selling price, or at
+  // cost + markup when it has none). Otherwise the workbook's cost-plus formula.
+  const priceList = data.priceList || [];
+  const sell = (kind, item) => {
+    if (!item || item === "None") return null;
+    const p = priceList.find((x) => x.kind === kind && x.item === item);
+    return p && p.price !== "" && p.price != null && isFinite(Number(p.price)) && Number(p.price) > 0 ? Number(p.price) : null;
+  };
+  const sizePrice = sell("Size", input.size);
+  let menu = null;
+  if (sizePrice != null) {
+    const withMarkup = (cost) => cost * (1 + markup);
+    const parts = [{ label: "Cake " + (input.size || ""), price: sizePrice }];
+    toppingLines.forEach((t) => { if (toppingUsed(t.name)) parts.push({ label: t.name, price: sell("Topping", t.name) ?? withMarkup(t.cost) }); });
+    if (input.box) parts.push({ label: input.box, price: sell("Box", input.box) ?? withMarkup(boxCost) });
+    if (input.board) parts.push({ label: input.board, price: sell("Board", input.board) ?? withMarkup(boardCost) });
+    if (input.candles && candleAddon) parts.push({ label: candleAddon.name, price: sell("Add-on", candleAddon.name) ?? withMarkup(candlesCost) });
+    if (input.carryBag && bagAddon) parts.push({ label: bagAddon.name, price: sell("Add-on", bagAddon.name) ?? withMarkup(bagCost) });
+    extraAddonLines.forEach((a) => parts.push({ label: a.name, price: sell("Add-on", a.name) ?? withMarkup(a.cost) }));
+    menu = { parts, total: parts.reduce((s, p) => s + p.price, 0) };
+  }
+  const baseBeforeDelivery = menu ? menu.total : calculatedBeforeDelivery;
+
+  // Pricing rules (rush / express charges, festival discounts)
+  const ruleDefs = data.rules || [];
+  const ruleLines = (input.rules || [])
+    .map((nm) => ruleDefs.find((r) => r.name === nm))
+    .filter(Boolean)
+    .map((r) => {
+      const amt = r.type === "₹" ? n(r.amount) : (baseBeforeDelivery * n(r.amount)) / 100;
+      return { name: r.name, effect: r.effect, type: r.type, amount: n(r.amount), value: r.effect === "Discount" ? -amt : amt };
+    });
+  const rulesTotal = ruleLines.reduce((s, r) => s + r.value, 0);
+  const priceBeforeDelivery = Math.max(baseBeforeDelivery + rulesTotal, 0);
+  let profit = priceBeforeDelivery - totalCost;
+  if (!menu && !ruleLines.length) profit = calcProfit; // identical to the workbook
 
   let delivery = 0;
+  let deliveryZone = null;
   if (input.delivery === "Home delivery") {
-    delivery = Math.max(
-      n(settings.minDelivery),
-      n(input.distanceKm) * n(settings.deliveryRatePerKm) * n(settings.tripMultiplier)
-    );
+    const zone = input.zone ? (data.zones || []).find((z) => z.name === input.zone) : null;
+    if (zone) {
+      delivery = n(zone.charge);
+      deliveryZone = zone.name;
+    } else {
+      delivery = Math.max(
+        n(settings.minDelivery),
+        n(input.distanceKm) * n(settings.deliveryRatePerKm) * n(settings.tripMultiplier)
+      );
+    }
   }
-  const gst = (priceBeforeDelivery + delivery) * n(settings.gst);
-  const beforeRounding = priceBeforeDelivery + delivery + gst;
-  const finalQuote = excelCeiling(beforeRounding, n(settings.rounding));
+  let gst = (priceBeforeDelivery + delivery) * n(settings.gst);
+  let beforeRounding = priceBeforeDelivery + delivery + gst;
+  const calculatedQuote = excelCeiling(beforeRounding, n(settings.rounding));
+  let finalQuote = calculatedQuote;
+  const override = input.priceOverride === "" || input.priceOverride == null ? null : Number(input.priceOverride);
+  if (override != null && isFinite(override) && override > 0) {
+    // her own price for this order: GST is inside it, delivery is still passed on
+    finalQuote = override;
+    gst = n(settings.gst) ? (override * n(settings.gst)) / (1 + n(settings.gst)) : 0;
+    beforeRounding = override;
+    profit = override - gst - delivery - totalCost;
+  }
   const pricePerKgExclDelivery = weightKg > 0 ? priceBeforeDelivery / weightKg : 0;
   const weightCheck = spongeQty + fillingQty + crumbQty + frostingQty;
   const weightOk = Math.abs(weightCheck - weightKg) < 0.001;
@@ -213,6 +286,7 @@ export function calculateQuote(input, data) {
         rate: bagRate,
         cost: bagCost,
       },
+      extraAddons: extraAddonLines,
     },
     ingredientCost,
     toppingsCost,
@@ -227,6 +301,13 @@ export function calculateQuote(input, data) {
     gst,
     beforeRounding,
     finalQuote,
+    calculatedQuote,
+    calculatedBeforeDelivery,
+    priceOverride: override != null && isFinite(override) && override > 0 ? override : null,
+    menu,
+    rules: ruleLines,
+    rulesTotal,
+    deliveryZone,
     pricePerKgExclDelivery,
     weightCheck,
     weightOk,

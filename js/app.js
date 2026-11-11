@@ -1,3 +1,5 @@
+import { PRICE_KINDS } from "./store.js";
+import { findAddon } from "./calculator.js";
 import { Store, checkPin, setPin, isUnlocked, unlockSession, lockSession, ordersToSheetRows, toCsv } from "./store.js";
 import { rupees, rupeesWhole, scaleRecipe } from "./calculator.js";
 import { SyncEngine, loadSyncConfig, saveSyncConfig, makeTransport, DEFAULT_SHEET_ID } from "./sync.js";
@@ -73,18 +75,32 @@ const icons = {
 };
 
 function quoteBox(q) {
+  const mode = q.priceOverride ? "Your price for this order" : q.menu ? "Final quote · menu price" : "Final quote";
+  const note = q.priceOverride
+    ? `Calculated quote was ${rupeesWhole(q.calculatedQuote)}`
+    : q.menu ? `Cost-plus calculator would say ${rupeesWhole(excelRound(q))}` : "";
   return `<div class="quote-box">
-    <div class="lbl">Final quote</div>
+    <div class="lbl">${mode}</div>
     <div class="quote-num">${rupeesWhole(q.finalQuote)}</div>
+    ${note ? `<div class="tiny" style="color:#f3e2cf;margin:-6px 0 8px">${note}</div>` : ""}
     <div class="quote-grid">
       <div><span>Raw materials</span><br><strong>${rupees(q.rawMaterialCost)}</strong></div>
       <div><span>Labour</span><br><strong>${rupees(q.labour)}</strong></div>
       <div><span>Overheads</span><br><strong>${rupees(q.overheads)}</strong></div>
       <div><span>Profit</span><br><strong>${rupees(q.profit)}</strong></div>
-      <div><span>Delivery</span><br><strong>${rupees(q.delivery)}</strong></div>
+      <div><span>Delivery${q.deliveryZone ? " · " + escapeHtml(q.deliveryZone) : ""}</span><br><strong>${rupees(q.delivery)}</strong></div>
       <div><span>Per kg (ex-del.)</span><br><strong>${rupees(q.pricePerKgExclDelivery)}</strong></div>
+      ${(q.rules || []).map((r) => `<div><span>${escapeHtml(r.name)}</span><br><strong>${r.value < 0 ? "−" : "+"}${rupees(Math.abs(r.value))}</strong></div>`).join("")}
     </div>
   </div>`;
+}
+function excelRound(q) {
+  // what the plain cost-plus calculator gives (for comparison with the menu price)
+  const s = store.state.settings;
+  const before = q.calculatedBeforeDelivery + (q.rulesTotal || 0) + q.delivery;
+  const v = before * (1 + Number(s.gst || 0));
+  const r = Number(s.rounding || 0);
+  return r > 0 ? Math.ceil(v / r - 1e-12) * r : v;
 }
 
 function breakdownTable(q) {
@@ -98,12 +114,15 @@ function breakdownTable(q) {
     ["Cake board", q.lines.board],
     ["Candles & knife", q.lines.candles],
     ["Carry bag", q.lines.carryBag],
+    ...(q.lines.extraAddons || []).map((a) => ["Add-on", a]),
   ];
   return `<table class="breakdown"><thead><tr><th>Component</th><th>Selection</th><th class="num">Qty</th><th class="num">Cost</th></tr></thead><tbody>
     ${rows.map(([l,x]) => `<tr><td>${l}</td><td>${x.name || "—"}</td><td class="num">${x.qty ? Number(x.qty).toLocaleString("en-IN",{maximumFractionDigits:3}) + " " + (x.unit||"") : "—"}</td><td class="num">${rupees(x.cost)}</td></tr>`).join("")}
     <tr class="total-row"><td colspan="3">Ingredients (incl. wastage)</td><td class="num">${rupees(q.ingredientCost)}</td></tr>
     <tr><td colspan="3">Packaging</td><td class="num">${rupees(q.packagingCost)}</td></tr>
     <tr><td colspan="3">Total cost of making</td><td class="num">${rupees(q.totalCost)}</td></tr>
+    ${q.menu ? q.menu.parts.map((p) => `<tr><td colspan="3">Menu price · ${escapeHtml(p.label)}</td><td class="num">${rupees(p.price)}</td></tr>`).join("") : ""}
+    ${(q.rules || []).map((r) => `<tr><td colspan="3">${escapeHtml(r.name)} (${r.type === "%" ? r.amount + "%" : "₹" + r.amount} ${r.effect === "Discount" ? "off" : "extra"})</td><td class="num">${r.value < 0 ? "−" : ""}${rupees(Math.abs(r.value))}</td></tr>`).join("")}
     <tr><td colspan="3">Before rounding</td><td class="num">${rupees(q.beforeRounding)}</td></tr>
     <tr class="total-row"><td colspan="3">Final quote</td><td class="num">${rupeesWhole(q.finalQuote)}</td></tr>
   </tbody></table>
@@ -145,6 +164,10 @@ function calcInputsFromForm(form, settings) {
     delivery: g("delivery"),
     distanceKm: Number(g("distanceKm") || 0),
     hoursOverride: g("hoursOverride") === "" ? null : g("hoursOverride"),
+    priceOverride: g("priceOverride") === "" || g("priceOverride") == null ? null : Number(g("priceOverride")),
+    zone: g("delivery") === "Home delivery" ? g("zone") || "" : "",
+    rules: [...form.querySelectorAll('input[name="rule"]:checked')].map((x) => x.value),
+    extraAddons: [...form.querySelectorAll('input[name="addon"]:checked')].map((x) => x.value),
     deliveryDate: g("deliveryDate"),
     advancePaid: Number(g("advancePaid") || 0),
     notes: g("notes"),
@@ -158,14 +181,27 @@ function cakeForm(pre = {}, settings) {
   const fillings = menu.filter((r) => r.type === "Filling").map((r) => r.name);
   const frostings = menu.filter((r) => r.type === "Frosting").map((r) => r.name);
   const tops = settings.toppings.map((t) => t.name);
-  const p = { size: "0.5 kg", layers: 2, sponge: "Chocolate Sponge", filling: "Chocolate Ganache", frosting: "Chocolate Ganache Frosting", topping1: "None", topping2: "None", topping3: "None", box: "Cake box 8x8x5 in (up to 1 kg)", board: "Cake board 8 in", delivery: "Home delivery", distanceKm: 8, carryBag: true, candles: false, status: "Enquiry", ...pre };
+  if (!tops.includes("None")) tops.unshift("None");
+  const first = (list, want) => (list.includes(want) ? want : list[0]);
+  const p = { size: first(settings.sizes.map((x) => x.name), "0.5 kg"), layers: 2, sponge: first(sponges, "Chocolate Sponge"), filling: first(fillings, "Chocolate Ganache"), frosting: first(frostings, "Chocolate Ganache Frosting"), topping1: "None", topping2: "None", topping3: "None", box: first(settings.boxes, "Cake box 8x8x5 in (up to 1 kg)"), board: first(settings.boards, "Cake board 8 in"), delivery: "Home delivery", distanceKm: 8, carryBag: true, candles: false, status: "Enquiry", ...pre };
+  const candle = findAddon(settings.addons, "candles");
+  const bag = findAddon(settings.addons, "carryBag");
+  const extra = (settings.addons || []).filter((a) => a !== candle && a !== bag);
+  const zones = store.state.zones || [];
+  const ruleList = store.state.rules || [];
+  const ticked = p.rules ?? store.defaultRules();
+  const shownRules = ruleList.filter((r) => r.active || ticked.includes(r.name));
+  const custs = store.customerRows();
+  const keep = (list, v) => (v && !list.includes(v) ? [...list, v] : list); // an old order keeps its removed option
   return `<form id="cake-form">
+    <datalist id="cust-list">${custs.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone || "")}</option>`).join("")}</datalist>
     <div class="card">
       <h2>Order details</h2>
       <div class="row-2">
-        <div><label>Customer</label><input name="customer" value="${escapeHtml(p.customer||"")}" placeholder="Name" required></div>
+        <div><label>Customer</label><input name="customer" list="cust-list" autocomplete="off" value="${escapeHtml(p.customer||"")}" placeholder="Name (pick a saved one)" required></div>
         <div><label>Phone</label><input name="phone" type="tel" value="${escapeHtml(p.phone||"")}" placeholder="WhatsApp number"></div>
       </div>
+      <p class="tiny" id="cust-hint"></p>
       <div class="row-2">
         <div><label>Delivery date</label><input name="deliveryDate" type="date" value="${escapeHtml(p.deliveryDate||"")}"></div>
         <div><label>Status</label><select name="status">${options(STATUSES, p.status)}</select></div>
@@ -178,29 +214,34 @@ function cakeForm(pre = {}, settings) {
     <div class="card" style="margin-top:12px">
       <h2>Cake</h2>
       <div class="row-2">
-        <div><label>Size</label><select name="size">${options(settings.sizes.map(s=>s.name), p.size)}</select></div>
-        <div><label>Layers</label><select name="layers">${options(settings.layers.map(String), String(p.layers))}</select></div>
+        <div><label>Size</label><select name="size">${options(keep(settings.sizes.map(s=>s.name), p.size), p.size)}</select></div>
+        <div><label>Layers</label><select name="layers">${options(keep(settings.layers.map(String), String(p.layers)), String(p.layers))}</select></div>
       </div>
-      <label>Sponge</label><select name="sponge">${options(sponges, p.sponge)}</select>
-      <label>Filling</label><select name="filling">${options(fillings, p.filling)}</select>
-      <label>Frosting</label><select name="frosting">${options(frostings, p.frosting)}</select>
+      <label>Sponge</label><select name="sponge">${options(keep(sponges, p.sponge), p.sponge)}</select>
+      <label>Filling</label><select name="filling">${options(keep(fillings, p.filling), p.filling)}</select>
+      <label>Frosting</label><select name="frosting">${options(keep(frostings, p.frosting), p.frosting)}</select>
       <div class="row-3">
-        <div><label>Topping 1</label><select name="topping1">${options(tops, p.topping1||"None")}</select></div>
-        <div><label>Topping 2</label><select name="topping2">${options(tops, p.topping2||"None")}</select></div>
-        <div><label>Topping 3</label><select name="topping3">${options(tops, p.topping3||"None")}</select></div>
+        <div><label>Topping 1</label><select name="topping1">${options(keep(tops, p.topping1||"None"), p.topping1||"None")}</select></div>
+        <div><label>Topping 2</label><select name="topping2">${options(keep(tops, p.topping2||"None"), p.topping2||"None")}</select></div>
+        <div><label>Topping 3</label><select name="topping3">${options(keep(tops, p.topping3||"None"), p.topping3||"None")}</select></div>
       </div>
       <div class="row-2">
-        <div><label>Cake box</label><select name="box">${options(settings.boxes, p.box)}</select></div>
-        <div><label>Cake board</label><select name="board">${options(settings.boards, p.board)}</select></div>
+        <div><label>Cake box</label><select name="box">${options(keep(settings.boxes, p.box), p.box)}</select></div>
+        <div><label>Cake board</label><select name="board">${options(keep(settings.boards, p.board), p.board)}</select></div>
       </div>
-      <label class="check"><input type="checkbox" name="candles" ${p.candles?"checked":""}> Candles & knife set</label>
-      <label class="check"><input type="checkbox" name="carryBag" ${p.carryBag?"checked":""}> Carry bag</label>
+      ${candle ? `<label class="check"><input type="checkbox" name="candles" ${p.candles?"checked":""}> ${escapeHtml(candle.name)}</label>` : `<input type="hidden" name="candles">`}
+      ${bag ? `<label class="check"><input type="checkbox" name="carryBag" ${p.carryBag?"checked":""}> ${escapeHtml(bag.name)}</label>` : `<input type="hidden" name="carryBag">`}
+      ${extra.map((a) => `<label class="check"><input type="checkbox" name="addon" value="${escapeHtml(a.name)}" ${(p.extraAddons||[]).includes(a.name)?"checked":""}> ${escapeHtml(a.name)}</label>`).join("")}
       <div class="row-2">
         <div><label>Delivery</label><select name="delivery">${options(["Home delivery","Pickup"], p.delivery)}</select></div>
-        <div><label>Distance, one way (km)</label><input name="distanceKm" type="number" min="0" step="0.1" value="${p.distanceKm||0}"></div>
+        ${zones.length || p.zone ? `<div><label>Delivery charge</label><select name="zone"><option value="">By distance (₹/km)</option>${keep(zones.map((z) => z.name), p.zone).map((z) => { const zz = zones.find((x) => x.name === z); return `<option value="${escapeHtml(z)}" ${z === p.zone ? "selected" : ""}>${escapeHtml(z)}${zz ? " · ₹" + zz.charge : ""}</option>`; }).join("")}</select></div>` : ""}
       </div>
+      <div><label>Distance, one way (km)</label><input name="distanceKm" type="number" min="0" step="0.1" value="${p.distanceKm||0}"></div>
+      ${shownRules.length ? `<label>Pricing rules</label><div class="chips">${shownRules.map((r) => `<label class="chip-check"><input type="checkbox" name="rule" value="${escapeHtml(r.name)}" ${ticked.includes(r.name)?"checked":""}> ${escapeHtml(r.name)} <span class="muted">${r.effect === "Discount" ? "−" : "+"}${r.type === "%" ? r.amount + "%" : "₹" + r.amount}</span></label>`).join("")}</div>` : ""}
       <label>Hours needed (leave blank for suggested)</label>
       <input name="hoursOverride" type="number" min="0" step="0.25" value="${p.hoursOverride ?? ""}" placeholder="Auto from size, layers, toppings">
+      <label>Your price for this order (₹) — optional</label>
+      <input name="priceOverride" type="number" min="0" step="1" value="${p.priceOverride ?? ""}" placeholder="Leave blank to use the quote below">
     </div>
     <div id="live-quote" style="margin-top:12px"></div>
   </form>`;
@@ -254,6 +295,7 @@ function viewOrders() {
     ? list.map((o) => `<div class="order-item" data-go="#/order/${o.id}">
         <div><h3>${escapeHtml(o.customer||"No name")}</h3><div class="meta">${o.id} · ${fmtDate(o.deliveryDate||o.createdAt)} · ${escapeHtml(cakeLabel(o))}</div></div>
         <div style="text-align:right"><span class="pill ${o.status}">${o.status}</span><div class="meta" style="margin-top:4px">${rupeesWhole(o.quoteSnapshot?.finalQuote||0)}</div></div>
+        <div class="quick-row">${payPill(o)}${nextStatus(o.status) ? `<button class="mini-btn" data-next="${o.id}" data-status="${nextStatus(o.status)}">Mark ${nextStatus(o.status)}</button>` : ""}</div>
       </div>`).join("")
     : `<p class="empty">No orders yet. Log the first one from a quote or the button below.</p>`;
   return `${topbar()}<h2 class="page-title">Orders</h2>
@@ -265,26 +307,52 @@ function viewOrders() {
 }
 
 function viewOrderNew() {
+  const c = route.cust ? store.customerRows().find((x) => custKey(x) === route.cust) : null;
   return `${topbar()}<h2 class="page-title">New order</h2>
-    ${cakeForm({}, store.state.settings)}
+    ${cakeForm(c ? { customer: c.name, phone: c.phone } : {}, store.state.settings)}
     <div class="btn-row"><button class="btn" id="save-order">Save order</button><button class="btn secondary" data-go="#/orders">Cancel</button></div>
     ${nav("orders")}`;
+}
+
+const NEXT = { Enquiry: "Confirmed", Confirmed: "Baking", Baking: "Delivered", Delivered: "Paid" };
+function nextStatus(st) { return NEXT[st] || ""; }
+function payPill(o) {
+  const p = store.paymentOf(o);
+  const cls = p.status === "Paid in full" ? "OK" : p.status === "Advance paid" ? "Confirmed" : "Enquiry";
+  return `<span class="pill ${cls}">${p.status}${p.status !== "Paid in full" && p.balance ? " · due " + rupeesWhole(p.balance) : ""}</span>`;
 }
 
 function viewOrder(id) {
   const o = store.state.orders.find((x) => x.id === id);
   if (!o) return `${topbar()}<p>Order not found.</p>${nav("orders")}`;
   const q = o.quoteSnapshot || store.quote(o);
-  const bal = Math.max((q.finalQuote || 0) - (o.advancePaid || 0), 0);
+  const pay = store.paymentOf({ ...o, quoteSnapshot: q });
   return `${topbar()}<h2 class="page-title">${escapeHtml(o.customer||"Order")}</h2>
-    <p class="meta">${o.id} · Created ${fmtDate(o.createdAt)}</p>
+    <p class="meta">${o.id} · Created ${fmtDate(o.createdAt)}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ""}</p>
+    <div class="card" style="margin-bottom:12px">
+      <h2>Status</h2>
+      <div class="chips" id="status-chips">${STATUSES.map((st) => `<button class="chip ${o.status === st ? "on" : ""}" data-set-status="${st}" data-id="${o.id}">${st}</button>`).join("")}</div>
+    </div>
     ${quoteBox(q)}
-    <p class="tiny">Advance paid ${rupees(o.advancePaid||0)} · Balance ${rupees(bal)} · Profit ${rupees(q.profit)}</p>
+    <div class="card" style="margin-top:12px">
+      <h2>Payment ${payPill({ ...o, quoteSnapshot: q })}</h2>
+      <div class="quote-grid" style="color:inherit">
+        <div><span class="muted">Order total</span><br><strong>${rupees(pay.total)}</strong></div>
+        <div><span class="muted">Received so far</span><br><strong>${rupees(pay.paid)}</strong></div>
+        <div><span class="muted">Balance due</span><br><strong>${rupees(pay.balance)}</strong></div>
+        <div><span class="muted">Profit</span><br><strong>${rupees(q.profit)}</strong></div>
+      </div>
+      <div class="row-2" style="margin-top:6px">
+        <div><label>Payment received (₹)</label><input id="pay-amt" type="number" min="0" step="1" placeholder="${pay.paid ? "Balance " + Math.round(pay.balance) : "Advance"}"></div>
+        <div><label>&nbsp;</label><button class="btn secondary full" id="pay-add" data-id="${o.id}">Add payment</button></div>
+      </div>
+      <div class="btn-row"><button class="btn sage" id="pay-full" data-id="${o.id}" ${pay.balance ? "" : "disabled"}>Paid in full</button></div>
+      <p class="tiny">Saved in the Orders tab: “Advance paid (₹)” is the total received; “Payment status” and “Balance (₹)” are filled in for you.</p>
+    </div>
     ${(() => { const live = store.quote(o); return q.fromSheet && Math.round(live.finalQuote) !== Math.round(q.finalQuote) ? `<p class="tiny warn-msg">Saved quote is ${rupeesWhole(q.finalQuote)} (from the sheet). With today’s prices it would be ${rupeesWhole(live.finalQuote)}. Tap “Update order” to re-price.</p>` : ""; })()}
     ${cakeForm(o, store.state.settings)}
     <div class="btn-row">
       <button class="btn" id="save-order" data-id="${o.id}">Update order</button>
-      <button class="btn sage" id="mark-paid" data-id="${o.id}">Mark paid</button>
       <button class="btn secondary" id="use-stock" data-id="${o.id}">Deduct ingredients from stock</button>
       <button class="btn danger" id="delete-order" data-id="${o.id}">Delete</button>
     </div>
@@ -318,13 +386,13 @@ function viewRecipes() {
       <label>Recipe</label>
       <select id="recipe-pick">${names.map((n) => `<option ${n===chosen?"selected":""}>${escapeHtml(n)}</option>`).join("")}</select>
       <p><span class="pill">${escapeHtml(type)}</span> · Cost per 1 kg: <strong>${rupees(costs[chosen]||0)}</strong></p>
-      <table class="breakdown"><thead><tr><th>Ingredient</th><th class="num">Qty / 1 kg</th><th class="num">Cost</th></tr></thead><tbody>
+      <table class="breakdown"><thead><tr><th>Ingredient</th><th class="num">Qty / 1 kg</th><th class="num">Cost</th><th></th></tr></thead><tbody>
         ${lines.map((l) => {
           const mat = store.state.rawMaterials.find((m) => m.name === l.ingredient);
           const rate = mat ? (Number(mat.packPrice)/Number(mat.packSize)||0) : 0;
-          return `<tr><td><select class="mini" data-rline="${escapeHtml(l.key)}" data-field="ingredient">${options(matNames, l.ingredient)}</select>${mat?.estimated?'<span class="tag-est">ESTIMATED</span>':""}${!mat?'<span class="tag-est">MISSING</span>':""}</td><td class="num"><input class="mini num" data-rline="${escapeHtml(l.key)}" data-field="qtyPerKg" type="number" step="any" min="0" value="${l.qtyPerKg}"> ${l.unit||""}</td><td class="num">${rupees(l.qtyPerKg*rate)}</td></tr>`;
+          return `<tr><td><select class="mini" data-rline="${escapeHtml(l.key)}" data-field="ingredient">${options(matNames, l.ingredient)}</select>${mat?.estimated?'<span class="tag-est">ESTIMATED</span>':""}${!mat?'<span class="tag-est">MISSING</span>':""}</td><td class="num"><input class="mini num" data-rline="${escapeHtml(l.key)}" data-field="qtyPerKg" type="number" step="any" min="0" value="${l.qtyPerKg}"> ${l.unit||""}</td><td class="num">${rupees(l.qtyPerKg*rate)}</td><td><button class="x-btn sm" data-rdel="${escapeHtml(l.key)}" title="Remove this line" aria-label="Remove line">✕</button></td></tr>`;
         }).join("")}
-        <tr class="total-row"><td colspan="2">Per 1 kg</td><td class="num">${rupees(costs[chosen]||0)}</td></tr>
+        <tr class="total-row"><td colspan="2">Per 1 kg</td><td class="num">${rupees(costs[chosen]||0)}</td><td></td></tr>
       </tbody></table>
       <p class="tiny">Edit a quantity or ingredient and it is saved${store.sheetMode ? " to the Recipes tab of the sheet" : ""}. Quantities are for 1 kg of this recipe, in the item’s own unit.</p>
       <div class="row-3">
@@ -332,6 +400,10 @@ function viewRecipes() {
         <div><label>Qty / 1 kg</label><input id="rl-qty" type="number" step="any" min="0" value="0"></div>
         <div><label>&nbsp;</label><button class="btn secondary" id="rl-add" data-recipe="${escapeHtml(chosen)}" data-type="${escapeHtml(type)}">Add line</button></div>
       </div>
+      <label>Method notes</label>
+      <textarea id="r-notes" data-recipe="${escapeHtml(chosen)}" data-type="${escapeHtml(type)}" placeholder="Steps, oven temperature, baking time, tips…">${escapeHtml(store.recipeNotes(chosen))}</textarea>
+      <p class="tiny">Notes save when you leave the box${store.sheetMode ? " (Recipe Notes tab)" : ""}.</p>
+      <div class="btn-row"><button class="btn ghost" data-go="#/recipe-new?type=${encodeURIComponent(type || "Sponge")}">+ New recipe</button></div>
     </div>
     <div class="card" style="margin-top:12px">
       <h2>Batch scaler</h2>
@@ -387,12 +459,29 @@ function viewInventory() {
       <div><label>Opening</label><input data-inv="${escapeHtml(r.item)}" data-field="opening" type="number" step="any" value="${r.opening}"></div>
       <div><label>Purchased</label><input data-inv="${escapeHtml(r.item)}" data-field="purchased" type="number" step="any" value="${r.purchased}"></div>
       <div><label>Used</label><input data-inv="${escapeHtml(r.item)}" data-field="used" type="number" step="any" value="${r.used}"></div>
-      <div><label>Reorder level</label><input data-inv="${escapeHtml(r.item)}" data-field="reorderLevel" type="number" step="any" value="${r.reorderLevel}"></div>
+      <div><label>Low-stock alert at (${escapeHtml(r.unit)})</label><input data-inv="${escapeHtml(r.item)}" data-field="reorderLevel" type="number" step="any" min="0" value="${r.reorderLevel}"></div>
     </div>
   </div>`).join("");
+  const mats = store.state.rawMaterials;
+  const pre = mats.find((m) => m.name === route.item) || null;
+  const recent = (store.state.purchases || []).slice(-8).reverse();
   return `${topbar()}<h2 class="page-title">Inventory</h2>
     <div class="stats"><div class="card"><div class="stat-lbl">Stock value</div><div class="stat-val">${rupeesWhole(value)}</div></div>
     <div class="card"><div class="stat-lbl">Items to reorder</div><div class="stat-val">${low}</div></div></div>
+    <div class="card" style="margin-top:12px">
+      <h2>Log a purchase</h2>
+      <label>Item</label><select id="lp-item"><option value="">Choose…</option>${mats.map((m) => `<option ${pre && m.name === pre.name ? "selected" : ""}>${escapeHtml(m.name)}</option>`).join("")}</select>
+      <p class="tiny" id="lp-info">${pre ? `Pack: ${pre.packSize} ${escapeHtml(pre.unit)} at ${rupees(pre.packPrice)}` : "Adds to “Purchased” and, if the price changed, updates the pack price everywhere."}</p>
+      <div class="row-3">
+        <div><label>Packs bought</label><input id="lp-packs" type="number" min="0" step="any" value="1"></div>
+        <div><label>Price per pack (₹)</label><input id="lp-price" type="number" min="0" step="any" value="${pre ? pre.packPrice : ""}"></div>
+        <div><label>Date</label><input id="lp-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      </div>
+      <label>Note</label><input id="lp-note" placeholder="Shop, bill no. (optional)">
+      <div class="btn-row"><button class="btn" id="lp-save">Add to stock</button></div>
+      <p id="lp-msg" class="ok-msg"></p>
+      ${recent.length ? `<h3>Recent purchases</h3><table class="breakdown"><tbody>${recent.map((p) => `<tr><td>${escapeHtml(p.item)}<div class="tiny">${fmtDate(p.date)} · ${p.packs} × ${rupees(p.pricePerPack)}</div></td><td class="num">+${p.qty} ${escapeHtml(p.unit || "")}<div class="tiny">${rupees(p.total)}</div></td></tr>`).join("")}</tbody></table>` : ""}
+    </div>
     <div class="list" style="margin-top:12px">${items}</div>
     ${nav("more")}`;
 }
@@ -471,6 +560,10 @@ function viewMore() {
   const low = store.lowStock().length;
   return `${topbar()}<h2 class="page-title">More</h2>
     <div class="more-grid">
+      <button class="more-tile" data-go="#/menu"><strong>Menu &amp; prices</strong><span>Sizes, layers, flavours, toppings, boxes, add-ons</span></button>
+      <button class="more-tile" data-go="#/price-up"><strong>Price went up?</strong><span>Update an item's cost and see the effect</span></button>
+      <button class="more-tile" data-go="#/customers"><strong>Customers</strong><span>Phone numbers and past orders</span></button>
+      <button class="more-tile" data-go="#/pricing"><strong>Rules &amp; delivery</strong><span>Rush charges, discounts, delivery zones</span></button>
       <button class="more-tile" data-go="#/materials"><strong>Raw materials</strong><span>Pack prices that drive every quote</span></button>
       <button class="more-tile" data-go="#/inventory"><strong>Inventory ${low?`<span class="badge-count">${low}</span>`:""}</strong><span>Stock, used, reorder alerts</span></button>
       <button class="more-tile" data-go="#/profit"><strong>Profit</strong><span>Per order and per month</span></button>
@@ -511,7 +604,7 @@ function viewSettings() {
       </div>
       <p id="sync-msg" class="ok-msg">${escapeHtml(st.message || "")}</p>
       <p class="tiny">Data is read fresh from the sheet each time the app opens, and when you tap reload (↻). Every change you make here is written to the matching cells within a few seconds. Offline changes wait on this phone and are sent when you're back online.</p>
-      ${conflicts.length ? `<h3>Changes not applied</h3><ul class="tiny">${conflicts.map(c=>`<li>${escapeHtml(fmtTime(c.at))} · ${escapeHtml(c.what)}: ${escapeHtml(c.reason)}</li>`).join("")}</ul>` : ""}
+      ${conflicts.length ? `<h3>Sync notes</h3><ul class="tiny">${conflicts.map(c=>`<li>${escapeHtml(fmtTime(c.at))} · ${c.note ? "Note — " : "Not applied — "}${escapeHtml(c.what)}: ${escapeHtml(c.reason)}</li>`).join("")}</ul>` : ""}
       <p class="tiny"><a href="https://docs.google.com/spreadsheets/d/${escapeHtml(syncCfg.spreadsheetId || DEFAULT_SHEET_ID)}/edit" target="_blank" rel="noopener">Open Bakery Workbook</a> · <a href="./apps-script/SETUP.md.txt" target="_blank" rel="noopener">Setup steps</a> · <a href="./apps-script/Code.gs.txt" target="_blank" rel="noopener">Script to paste (Code.gs)</a></p>
     </div>
     <div class="card" style="margin-top:12px">
@@ -540,7 +633,7 @@ function viewSettings() {
         ${num("oh-water","Water & cleaning", o.water)}${num("oh-rent","Rent / kitchen share", o.rent)}
         ${num("oh-equipment","Equipment & misc.", o.equipment)}
       </div>
-      <p class="tiny">Cake sizes, layers, recipe menu, toppings, boxes, boards and add-ons are edited in the sheet; the app picks them up on the next load.</p>
+      <p class="tiny">Cake sizes, layers, flavours, toppings, boxes, boards and add-ons: <a href="#/menu">Menu &amp; prices</a>. Rush charges, discounts and delivery zones: <a href="#/pricing">Rules &amp; delivery</a>.</p>
       <div class="btn-row"><button class="btn" id="save-settings">Save rules</button></div>
     </div>
     <div class="card" style="margin-top:12px">
@@ -559,6 +652,267 @@ function viewSettings() {
       </div>
       <p id="io-msg" class="ok-msg"></p>
       ${store.sheetMode ? "" : `<div class="btn-row"><button class="btn danger" id="reset-data">Reset data to the original workbook</button></div>`}
+    </div>
+    ${nav("more")}`;
+}
+
+// ================= v3 screens: menu & prices, price went up, new recipe, rules & delivery, customers =================
+function roomNote(section, type) {
+  const c = store.roomLeft(section, type);
+  if (!c) return "";
+  if (c.free > 0) return `<p class="tiny">${c.free} empty row${c.free === 1 ? "" : "s"} left for this list in the sheet (${escapeHtml(c.range)}).</p>`;
+  return `<p class="tiny warn-msg">This list is full in the sheet (${escapeHtml(c.range)}). <button class="mini-btn" data-room-sec="${section}" data-room-type="${escapeHtml(type || "")}">Make room for 5 more</button></p>`;
+}
+function sellInput(kind, item) {
+  const v = store.sellingPrice(kind, item);
+  return `<div><label>Selling price (₹)</label><input type="number" min="0" step="1" data-sell-kind="${kind}" data-sell-item="${escapeHtml(item)}" value="${v ?? ""}" placeholder="—"></div>`;
+}
+function matCost(name) {
+  const m = store.state.rawMaterials.find((x) => x.name === name);
+  if (!m) return `<span class="tag-est">no Raw Materials row</span>`;
+  const r = Number(m.packPrice) / Number(m.packSize) || 0;
+  return `${rupees(r)} / ${escapeHtml(m.unit)} <a href="#/price-up?item=${encodeURIComponent(name)}">change cost</a>`;
+}
+function delBtn(section, key) {
+  return `<button class="x-btn" title="Remove" aria-label="Remove" data-menu-del="${section}" data-key="${escapeHtml(String(key))}">✕</button>`;
+}
+function matOptions(sel, withNew = true) {
+  const names = store.state.rawMaterials.map((m) => m.name);
+  return `${withNew ? `<option value="__new">+ New item…</option>` : ""}${names.map((n) => `<option ${n === sel ? "selected" : ""}>${escapeHtml(n)}</option>`).join("")}`;
+}
+function newMatFields(prefix, unit = "g") {
+  return `<div class="row-3 newmat" id="${prefix}-newmat" hidden>
+    <div><label>Pack size</label><input id="${prefix}-psize" type="number" min="0" step="any" value="1"></div>
+    <div><label>Unit</label><input id="${prefix}-punit" value="${unit}"></div>
+    <div><label>Pack price (₹)</label><input id="${prefix}-pprice" type="number" min="0" step="any" value="0"></div>
+  </div>`;
+}
+
+function viewMenu() {
+  const s = store.state.settings;
+  const costs = store.recipeCosts();
+  const card = (title, body, section, type) => `<div class="card" style="margin-top:12px"><h2>${title}</h2>${roomNote(section, type)}${body}</div>`;
+  const sizes = s.sizes.map((z) => `<div class="mrow">
+      <div class="row-3">
+        <div><label>Size name</label><input data-menu-sec="sizes" data-key="${escapeHtml(z.name)}" data-field="name" value="${escapeHtml(z.name)}"></div>
+        <div><label>Weight (kg)</label><input type="number" min="0" step="any" data-menu-sec="sizes" data-key="${escapeHtml(z.name)}" data-field="kg" value="${z.kg}"></div>
+        <div><label>Servings</label><input data-menu-sec="sizes" data-key="${escapeHtml(z.name)}" data-field="servings" value="${escapeHtml(z.servings)}"></div>
+        ${sellInput("Size", z.name)}
+      </div>${delBtn("sizes", z.name)}</div>`).join("");
+  const addSize = `<div class="addbox"><div class="row-3">
+      <div><label>New size</label><input id="add-sizes-name" placeholder="e.g. 2.5 kg"></div>
+      <div><label>Weight (kg)</label><input id="add-sizes-kg" type="number" min="0" step="any"></div>
+      <div><label>Servings</label><input id="add-sizes-serv" placeholder="e.g. 20-25"></div>
+      <div><label>Selling price (₹)</label><input id="add-sizes-sell" type="number" min="0" step="1" placeholder="optional"></div>
+    </div><div class="btn-row"><button class="btn secondary" data-menu-add="sizes">Add size</button></div></div>`;
+  const layers = `<div class="chips">${s.layers.map((l) => `<span class="chip on">${l} layers <button class="x-btn sm" data-menu-del="layers" data-key="${l}" aria-label="Remove">✕</button></span>`).join("")}</div>
+    <div class="row-2"><div><label>Add layer option</label><input id="add-layers-value" type="number" min="1" step="1" placeholder="e.g. 6"></div><div><label>&nbsp;</label><button class="btn secondary full" data-menu-add="layers">Add</button></div></div>`;
+  const onMenu = new Set(s.recipeMenu.map((m) => m.name));
+  const recipeCard = (type, plural) => {
+    const rows = s.recipeMenu.filter((m) => m.type === type).map((m) => `<div class="mrow">
+        <div class="row-2">
+          <div><label>Name</label><input data-menu-sec="recipeMenu" data-key="${escapeHtml(m.name)}" data-field="name" value="${escapeHtml(m.name)}"></div>
+          <div><label>Cost per kg</label><div class="meta" style="padding:10px 0">${rupees(costs[m.name] || 0)} · <a href="#/recipes?recipe=${encodeURIComponent(m.name)}">recipe</a></div></div>
+        </div>${delBtn("recipeMenu", m.name)}</div>`).join("");
+    const orphan = [...new Set(store.state.recipes.filter((r) => r.type === type && !onMenu.has(r.name)).map((r) => r.name))];
+    return card(plural, `${rows || `<p class="empty">None yet.</p>`}
+      ${orphan.length ? `<p class="tiny">In Recipes but not on the menu: ${orphan.map((n) => `<button class="mini-btn" data-menu-orphan="${escapeHtml(n)}" data-type="${type}">+ ${escapeHtml(n)}</button>`).join(" ")}</p>` : ""}
+      <div class="btn-row"><button class="btn secondary" data-go="#/recipe-new?type=${type}">New ${type.toLowerCase()} recipe</button></div>`, "recipeMenu", type);
+  };
+  const toppings = s.toppings.filter((t) => t.name !== "None").map((t) => `<div class="mrow">
+      <div class="row-3">
+        <div><label>Topping</label><input data-menu-sec="toppings" data-key="${escapeHtml(t.name)}" data-field="name" value="${escapeHtml(t.name)}"></div>
+        <div><label>Uses item</label><select data-menu-sec="toppings" data-key="${escapeHtml(t.name)}" data-field="material">${matOptions(t.material, false)}</select></div>
+        <div><label>Fixed qty / cake</label><input type="number" min="0" step="any" data-menu-sec="toppings" data-key="${escapeHtml(t.name)}" data-field="fixedQty" value="${t.fixedQty}"></div>
+        <div><label>Qty per kg</label><input type="number" min="0" step="any" data-menu-sec="toppings" data-key="${escapeHtml(t.name)}" data-field="qtyPerKg" value="${t.qtyPerKg}"></div>
+        ${sellInput("Topping", t.name)}
+        <div><label>Cost</label><div class="meta" style="padding:10px 0">${matCost(t.material)}</div></div>
+      </div>${delBtn("toppings", t.name)}</div>`).join("");
+  const addTopping = `<div class="addbox"><div class="row-3">
+      <div><label>New topping</label><input id="add-toppings-name" placeholder="e.g. Gold sprinkles"></div>
+      <div><label>Uses item</label><select id="add-toppings-mat" data-newmat="add-toppings">${matOptions("")}</select></div>
+      <div><label>Fixed qty / cake</label><input id="add-toppings-fixed" type="number" min="0" step="any" value="0"></div>
+      <div><label>Qty per kg</label><input id="add-toppings-perkg" type="number" min="0" step="any" value="0"></div>
+      <div><label>Selling price (₹)</label><input id="add-toppings-sell" type="number" min="0" step="1" placeholder="optional"></div>
+    </div>${newMatFields("add-toppings", "g")}<div class="btn-row"><button class="btn secondary" data-menu-add="toppings">Add topping</button></div></div>`;
+  const pack = (section, kind, label) => {
+    const rows = s[section].map((b) => `<div class="mrow"><div class="row-3">
+        <div><label>${label}</label><input data-menu-sec="${section}" data-key="${escapeHtml(b)}" data-field="name" value="${escapeHtml(b)}"></div>
+        <div><label>Cost each</label><div class="meta" style="padding:10px 0">${matCost(b)}</div></div>
+        ${sellInput(kind, b)}
+      </div>${delBtn(section, b)}</div>`).join("");
+    const add = `<div class="addbox"><div class="row-3">
+        <div><label>New ${label.toLowerCase()}</label><input id="add-${section}-name"></div>
+        <div><label>Pack size (nos)</label><input id="add-${section}-psize" type="number" min="1" step="1" value="10"></div>
+        <div><label>Pack price (₹)</label><input id="add-${section}-pprice" type="number" min="0" step="any" value="0"></div>
+        <div><label>Selling price (₹)</label><input id="add-${section}-sell" type="number" min="0" step="1" placeholder="optional"></div>
+      </div><p class="tiny">Its cost comes from a Raw Materials row with the same name (created for you if it doesn't exist).</p>
+      <div class="btn-row"><button class="btn secondary" data-menu-add="${section}">Add ${label.toLowerCase()}</button></div></div>`;
+    return card(label === "Cake box" ? "Cake boxes" : "Cake boards", rows + add, section);
+  };
+  const addons = s.addons.map((a) => `<div class="mrow"><div class="row-3">
+      <div><label>Add-on</label><input data-menu-sec="addons" data-key="${escapeHtml(a.name)}" data-field="name" value="${escapeHtml(a.name)}"></div>
+      <div><label>Uses item</label><select data-menu-sec="addons" data-key="${escapeHtml(a.name)}" data-field="material">${matOptions(a.material, false)}</select></div>
+      <div><label>Qty per cake</label><input type="number" min="0" step="any" data-menu-sec="addons" data-key="${escapeHtml(a.name)}" data-field="qty" value="${a.qty}"></div>
+      ${sellInput("Add-on", a.name)}
+      <div><label>Cost</label><div class="meta" style="padding:10px 0">${matCost(a.material)}</div></div>
+    </div>${delBtn("addons", a.name)}</div>`).join("");
+  const addAddon = `<div class="addbox"><div class="row-3">
+      <div><label>New add-on</label><input id="add-addons-name" placeholder="e.g. Sparkler candle"></div>
+      <div><label>Uses item</label><select id="add-addons-mat" data-newmat="add-addons">${matOptions("")}</select></div>
+      <div><label>Qty per cake</label><input id="add-addons-qty" type="number" min="0" step="any" value="1"></div>
+      <div><label>Selling price (₹)</label><input id="add-addons-sell" type="number" min="0" step="1" placeholder="optional"></div>
+    </div>${newMatFields("add-addons", "nos")}<div class="btn-row"><button class="btn secondary" data-menu-add="addons">Add add-on</button></div></div>`;
+  return `${topbar()}<h2 class="page-title">Menu &amp; prices</h2>
+    <p class="muted">Everything the order form offers. Changes are saved${store.sheetMode ? " to the Settings and Price List tabs of her sheet" : " on this phone"} and show up in the order form straight away.</p>
+    <p class="tiny"><strong>Selling price</strong> is optional. When a size has one, quotes use her menu price (size price + each extra’s selling price, or its cost + markup when it has none). Leave sizes blank to keep the cost-plus calculator.</p>
+    <p id="menu-msg" class="ok-msg"></p>
+    ${card("Cake sizes", sizes + addSize, "sizes")}
+    ${card("Layers", layers, "layers")}
+    ${recipeCard("Sponge", "Sponges")}
+    ${recipeCard("Filling", "Fillings")}
+    ${recipeCard("Frosting", "Frostings")}
+    ${card("Toppings", toppings + addTopping, "toppings")}
+    ${pack("boxes", "Box", "Cake box")}
+    ${pack("boards", "Board", "Cake board")}
+    ${card("Add-ons", addons + addAddon, "addons")}
+    ${nav("more")}`;
+}
+
+function viewPriceUp() {
+  const mats = store.state.rawMaterials;
+  const name = route.item && mats.some((m) => m.name === route.item) ? route.item : "";
+  const m = mats.find((x) => x.name === name);
+  return `${topbar()}<h2 class="page-title">Price went up?</h2>
+    <p class="muted">Pick the item, type the new pack price, check what changes, then save. Every recipe cost and new quote uses the new price.</p>
+    <div class="card">
+      <label>Item</label>
+      <select id="pu-item"><option value="">Choose…</option>${mats.map((x) => `<option ${x.name === name ? "selected" : ""}>${escapeHtml(x.name)}</option>`).join("")}</select>
+      ${m ? `<p class="meta">Now: ${rupees(m.packPrice)} for ${m.packSize} ${escapeHtml(m.unit)} (${rupees(Number(m.packPrice) / Number(m.packSize) || 0, 4)} / ${escapeHtml(m.unit)})${m.estimated ? ' <span class="tag-est">ESTIMATED</span>' : ""}</p>
+      <div class="row-2">
+        <div><label>New pack price (₹)</label><input id="pu-price" type="number" min="0" step="any" value="${m.packPrice}"></div>
+        <div><label>Pack size (${escapeHtml(m.unit)})</label><input id="pu-size" type="number" min="0" step="any" value="${m.packSize}"></div>
+      </div>
+      <div id="pu-impact"></div>
+      <div class="btn-row"><button class="btn" id="pu-save">Save new price</button></div>
+      <p id="pu-msg" class="ok-msg"></p>` : ""}
+    </div>
+    ${nav("more")}`;
+}
+function renderImpact() {
+  const name = $("#pu-item")?.value;
+  const box = $("#pu-impact");
+  if (!name || !box) return;
+  const im = store.priceImpact(name, $("#pu-price").value, $("#pu-size").value);
+  if (!im) return;
+  const arrow = (a, b) => `${rupees(a)} → <strong>${rupees(b)}</strong>`;
+  box.innerHTML = `<div class="impact">
+    <p>Cost per ${escapeHtml(im.item.unit)}: ${arrow(im.costPerUnitBefore, im.costPerUnitAfter)}</p>
+    ${im.recipes.length ? `<table class="breakdown"><thead><tr><th>Recipe</th><th class="num">Cost per kg</th></tr></thead><tbody>${im.recipes.map((r) => `<tr><td>${escapeHtml(r.name)}</td><td class="num">${arrow(r.before, r.after)}</td></tr>`).join("")}</tbody></table>` : `<p class="tiny">Not used in any recipe.</p>`}
+    ${im.uses.length ? `<p class="tiny">Also used by: ${im.uses.map(escapeHtml).join(", ")}</p>` : ""}
+    ${im.sampleQuote ? `<p class="tiny">Sample 0.5 kg chocolate cake quote: ${rupeesWhole(im.sampleQuote.before)} → <strong>${rupeesWhole(im.sampleQuote.after)}</strong></p>` : ""}
+    ${im.openOrders ? `<p class="tiny warn-msg">${im.openOrders} open order${im.openOrders > 1 ? "s" : ""} keep their saved quote. Open one and tap “Update order” to re-price it.</p>` : ""}
+  </div>`;
+}
+
+function viewRecipeNew() {
+  const type = ["Sponge", "Filling", "Frosting"].includes(route.type) ? route.type : "Sponge";
+  const mats = store.state.rawMaterials.map((m) => m.name);
+  const line = (i) => `<div class="row-2 rn-line"><div><select class="rn-ing"><option value="">Ingredient ${i + 1}…</option>${mats.map((n) => `<option>${escapeHtml(n)}</option>`).join("")}</select></div><div><input class="rn-qty" type="number" min="0" step="any" placeholder="Qty for 1 kg"></div></div>`;
+  return `${topbar()}<p class="tiny"><a href="#/recipes">← Recipes</a></p><h2 class="page-title">New recipe</h2>
+    <div class="card">
+      <div class="row-2">
+        <div><label>Recipe name</label><input id="rn-name" placeholder="e.g. Butterscotch Sponge"></div>
+        <div><label>Type</label><select id="rn-type">${options(["Sponge", "Filling", "Frosting"], type)}</select></div>
+      </div>
+      ${roomNote("recipeMenu", type)}
+      <label>Ingredients for 1 kg of this recipe (in each item’s own unit: g, ml or nos)</label>
+      <div id="rn-lines">${[0, 1, 2, 3, 4].map(line).join("")}</div>
+      <div class="btn-row"><button class="btn ghost" id="rn-more">+ another ingredient</button></div>
+      <label>Method notes</label><textarea id="rn-method" placeholder="Short steps, oven temperature, baking time…"></textarea>
+      <div class="btn-row"><button class="btn" id="rn-save">Create recipe</button></div>
+      <p id="rn-msg" class="error"></p>
+      <p class="tiny">Creates the recipe lines in the Recipes tab, adds it to the ${type.toLowerCase()} menu in Settings, and saves the notes in a “Recipe Notes” tab.</p>
+    </div>
+    ${nav("recipes")}`;
+}
+
+function viewPricing() {
+  const rules = store.state.rules || [];
+  const zones = store.state.zones || [];
+  const s = store.state.settings;
+  const ruleRow = (r) => `<div class="mrow" data-rule-row="${r.id}">
+      <div class="row-3">
+        <div><label>Rule</label><input data-rule="${r.id}" data-field="name" value="${escapeHtml(r.name)}"></div>
+        <div><label>Effect</label><select data-rule="${r.id}" data-field="effect">${options(["Charge", "Discount"], r.effect)}</select></div>
+        <div><label>Amount</label><div class="amt"><input type="number" min="0" step="any" data-rule="${r.id}" data-field="amount" value="${r.amount}"><select data-rule="${r.id}" data-field="type">${options(["%", "₹"], r.type)}</select></div></div>
+        <div><label>Apply</label><select data-rule="${r.id}" data-field="applyTo">${options(["When ticked", "Every order"], r.applyTo)}</select></div>
+      </div>
+      <label class="check"><input type="checkbox" data-rule="${r.id}" data-field="active" ${r.active ? "checked" : ""}> On</label>
+      <button class="x-btn" data-rule-del="${r.id}" aria-label="Remove">✕</button></div>`;
+  const zoneRow = (z) => `<div class="mrow"><div class="row-2">
+      <div><label>Zone</label><input data-zone="${z.id}" data-field="name" value="${escapeHtml(z.name)}"></div>
+      <div><label>Flat charge (₹)</label><input type="number" min="0" step="1" data-zone="${z.id}" data-field="charge" value="${z.charge}"></div>
+    </div><button class="x-btn" data-zone-del="${z.id}" aria-label="Remove">✕</button></div>`;
+  return `${topbar()}<h2 class="page-title">Pricing rules &amp; delivery</h2>
+    <div class="card">
+      <h2>Rush charges &amp; discounts</h2>
+      <p class="tiny">Switch a rule On to offer it. “When ticked” rules show as tick boxes on the order form (e.g. express orders); “Every order” rules are ticked automatically on new orders (e.g. a Diwali discount). % is worked out on the cake price before delivery.</p>
+      ${rules.map(ruleRow).join("") || `<p class="empty">No rules yet.</p>`}
+      <div class="btn-row">
+        <button class="btn secondary" id="rule-add-rush">+ Rush / express charge</button>
+        <button class="btn secondary" id="rule-add-fest">+ Festival discount</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>Delivery zones</h2>
+      <p class="tiny">A flat delivery charge per area. On the order form pick a zone, or leave it on “By distance” to use ₹${s.deliveryRatePerKm}/km × ${s.tripMultiplier} (minimum ₹${s.minDelivery}). Per-km rates are under Settings.</p>
+      ${zones.map(zoneRow).join("") || `<p class="empty">No zones yet.</p>`}
+      <div class="row-2"><div><label>New zone</label><input id="zone-name" placeholder="e.g. Within 5 km"></div><div><label>Flat charge (₹)</label><input id="zone-charge" type="number" min="0" step="1"></div></div>
+      <div class="btn-row"><button class="btn secondary" id="zone-add">Add zone</button></div>
+    </div>
+    <p class="tiny">Saved${store.sheetMode ? " in the “Pricing Rules” and “Delivery Zones” tabs of her sheet (created the first time you add one)" : " on this phone"}.</p>
+    ${nav("more")}`;
+}
+
+function custKey(c) {
+  return c.id || "n:" + encodeURIComponent((c.name || "") + "|" + (c.phone || ""));
+}
+function viewCustomers() {
+  const q = (route.q || "").toLowerCase();
+  let rows = store.customerRows();
+  if (q) rows = rows.filter((c) => (c.name + " " + c.phone).toLowerCase().includes(q));
+  return `${topbar()}<h2 class="page-title">Customers</h2>
+    <input class="search" id="cust-search" placeholder="Search name or phone" value="${escapeHtml(route.q || "")}">
+    <div class="list">${rows.map((c) => `<div class="order-item" data-go="#/customer/${encodeURIComponent(custKey(c))}">
+        <div><h3>${escapeHtml(c.name)}</h3><div class="meta">${escapeHtml(c.phone || "no phone")}${c.last ? " · last " + fmtDate(c.last) : ""}</div></div>
+        <div style="text-align:right"><span class="pill">${c.orders} order${c.orders === 1 ? "" : "s"}</span><div class="meta" style="margin-top:4px">${rupeesWhole(c.spent)}</div></div>
+      </div>`).join("") || `<p class="empty">No customers yet. They're added automatically when you save an order.</p>`}</div>
+    <div class="card" style="margin-top:12px"><h2>Add customer</h2>
+      <div class="row-2"><div><label>Name</label><input id="nc-name"></div><div><label>Phone</label><input id="nc-phone" type="tel"></div></div>
+      <label>Notes</label><input id="nc-notes" placeholder="Allergies, favourite flavour…">
+      <div class="btn-row"><button class="btn" id="nc-save">Save customer</button></div>
+    </div>
+    ${nav("more")}`;
+}
+function viewCustomer(key) {
+  const c = store.customerRows().find((x) => custKey(x) === key);
+  if (!c) return `${topbar()}<p>Customer not found.</p>${nav("more")}`;
+  const orders = store.ordersOf(c);
+  return `${topbar()}<p class="tiny"><a href="#/customers">← Customers</a></p>
+    <h2 class="page-title">${escapeHtml(c.name)}</h2>
+    <div class="card">
+      <div class="row-2"><div><label>Name</label><input id="cu-name" value="${escapeHtml(c.name)}"></div><div><label>Phone</label><input id="cu-phone" type="tel" value="${escapeHtml(c.phone || "")}"></div></div>
+      <label>Notes</label><input id="cu-notes" value="${escapeHtml(c.notes || "")}">
+      <div class="btn-row">
+        <button class="btn" id="cu-save" data-id="${escapeHtml(c.id || "")}">${c.saved ? "Save" : "Save to customer list"}</button>
+        <button class="btn secondary" data-go="#/order/new?cust=${encodeURIComponent(key)}">New order for ${escapeHtml(c.name.split(" ")[0])}</button>
+        ${c.phone ? `<a class="btn ghost" href="https://wa.me/${escapeHtml(String(c.phone).replace(/\D/g, "").replace(/^(\d{10})$/, "91$1"))}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+        ${c.saved ? `<button class="btn ghost" id="cu-del" data-id="${escapeHtml(c.id)}">Remove</button>` : ""}
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px"><h2>Past orders · ${orders.length}</h2>
+      <div class="list">${orders.map((o) => `<div class="order-item" data-go="#/order/${o.id}"><div><h3>${escapeHtml(cakeLabel(o))}</h3><div class="meta">${fmtDate(o.deliveryDate || o.createdAt)} · ${o.id}</div></div><div style="text-align:right"><span class="pill ${o.status}">${o.status}</span><div class="meta" style="margin-top:4px">${rupeesWhole(o.quoteSnapshot?.finalQuote || 0)}</div></div></div>`).join("") || `<p class="empty">No orders yet.</p>`}</div>
     </div>
     ${nav("more")}`;
 }
@@ -584,7 +938,10 @@ function parseHash() {
   const h = (location.hash || "#/dashboard").replace(/^#/, "");
   const [path, qs] = h.split("?");
   const parts = path.split("/").filter(Boolean);
-  if (parts[0] === "order" && parts[1] === "new") return { name: "order-new" };
+  const qp = new URLSearchParams(qs || "");
+  if (parts[0] === "order" && parts[1] === "new") return { name: "order-new", cust: qp.get("cust") || "" };
+  if (parts[0] === "customer" && parts[1]) return { name: "customer", id: decodeURIComponent(parts.slice(1).join("/")) };
+  if (["price-up", "recipe-new", "inventory", "customers"].includes(parts[0])) return { name: parts[0], item: qp.get("item") || "", type: qp.get("type") || "", q: qp.get("q") || "" };
   if (parts[0] === "order" && parts[1]) return { name: "order", id: parts[1] };
   if (parts[0] === "library" && parts[1]) return { name: "library-item", id: parts[1] };
   return { name: parts[0] || "dashboard", q: new URLSearchParams(qs || "").get("q") || "", status: new URLSearchParams(qs || "").get("status") || "All", recipe: new URLSearchParams(qs || "").get("recipe") || "", kg: new URLSearchParams(qs || "").get("kg") || "" };
@@ -612,6 +969,12 @@ function render() {
     "library-item": () => viewLibraryItem(route.id),
     more: viewMore,
     settings: viewSettings,
+    menu: viewMenu,
+    "price-up": viewPriceUp,
+    "recipe-new": viewRecipeNew,
+    pricing: viewPricing,
+    customers: viewCustomers,
+    customer: () => viewCustomer(route.id),
   };
   const fn = views[route.name] || viewDashboard;
   root.innerHTML = fn();
@@ -729,8 +1092,9 @@ function bindPage() {
     for (const t of q.lines.toppings) if (t.material && t.qty) usage.push({ item: t.material, qty: t.qty });
     if (o.box) usage.push({ item: o.box, qty: 1 });
     if (o.board) usage.push({ item: o.board, qty: 1 });
-    if (o.candles) usage.push({ item: "Candles & knife set", qty: 1 });
-    if (o.carryBag) usage.push({ item: "Carry bag (printed)", qty: 1 });
+    if (o.candles && q.lines.candles.qty) { const a = findAddon(store.state.settings.addons, "candles"); if (a) usage.push({ item: a.material, qty: q.lines.candles.qty }); }
+    if (o.carryBag && q.lines.carryBag.qty) { const a = findAddon(store.state.settings.addons, "carryBag"); if (a) usage.push({ item: a.material, qty: q.lines.carryBag.qty }); }
+    for (const a of q.lines.extraAddons || []) if (a.material && a.qty) usage.push({ item: a.material, qty: a.qty });
     store.deductStock(usage);
     alert("Stock updated from this cake’s ingredients, toppings and packaging.");
     render();
@@ -883,6 +1247,189 @@ function bindPage() {
       render();
     }
   });
+  bindV3();
+}
+
+function handleErr(err, section, type, retry) {
+  if (err && err.full && store.sheetMode && confirm(err.message.replace(/ Tap “Make room”.*$/, "") + "\n\nInsert 5 empty rows inside that list in her sheet now? (Sheets widens the Calculator's dropdowns to include them.)")) {
+    store.makeRoom(section, type);
+    if (retry) {
+      try { retry(); return; } catch (e2) { alert(e2 && e2.message ? e2.message : String(e2)); }
+    }
+    render();
+    return;
+  }
+  alert(err && err.message ? err.message : String(err));
+}
+
+function bindV3() {
+  const on = (sel, ev, fn) => document.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, (e) => fn(el, e)));
+  // ----- order form: customer quick-fill -----
+  const form = $("#cake-form");
+  if (form) {
+    const nameEl = form.elements.customer, phoneEl = form.elements.phone, hint = $("#cust-hint");
+    const fill = (c) => {
+      if (!c) { hint.textContent = ""; return; }
+      const n = store.ordersOf(c).length;
+      hint.textContent = `Saved customer · ${n} past order${n === 1 ? "" : "s"}${c.notes ? " · " + c.notes : ""}`;
+    };
+    nameEl?.addEventListener("change", () => {
+      const c = store.findCustomer({ name: nameEl.value });
+      if (c && !phoneEl.value) phoneEl.value = c.phone || "";
+      fill(c);
+    });
+    phoneEl?.addEventListener("change", () => {
+      const c = store.findCustomer({ phone: phoneEl.value });
+      if (c && !nameEl.value) nameEl.value = c.name;
+      fill(c);
+    });
+  }
+  // ----- orders: one-tap status + payments -----
+  on("[data-next]", "click", (el, e) => { e.stopPropagation(); store.setStatus(el.dataset.next, el.dataset.status); render(); });
+  on("[data-set-status]", "click", (el, e) => { e.preventDefault(); store.setStatus(el.dataset.id, el.dataset.setStatus); render(); });
+  $("#pay-add")?.addEventListener("click", (e) => {
+    try { store.recordPayment(e.target.dataset.id, $("#pay-amt").value); render(); } catch (err) { handleErr(err); }
+  });
+  $("#pay-full")?.addEventListener("click", (e) => { store.markPaidInFull(e.target.dataset.id); render(); });
+
+  // ----- menu & prices -----
+  on("[data-menu-sec]", "change", (el) => {
+    const { menuSec: sec, key, field } = el.dataset;
+    let val = el.value;
+    try {
+      if (field === "name") {
+        if (!val.trim()) { el.value = key; return; }
+        if (sec === "layers") val = Number(val);
+      }
+      store.updateMenuItem(sec, key, { [field]: val });
+      render();
+    } catch (err) { el.value = key; handleErr(err); }
+  });
+  on("[data-sell-kind]", "change", (el) => { store.setSellingPrice(el.dataset.sellKind, el.dataset.sellItem, el.value); $("#menu-msg") && ($("#menu-msg").textContent = `Selling price saved for ${el.dataset.sellItem}.`); });
+  on("[data-menu-del]", "click", (el, e) => {
+    e.preventDefault();
+    if (!confirm(`Remove “${el.dataset.key}” from the list? Old orders keep it.`)) return;
+    store.removeMenuItem(el.dataset.menuDel, el.dataset.key);
+    render();
+  });
+  on("[data-room-sec]", "click", (el, e) => {
+    e.preventDefault();
+    if (!confirm("Insert 5 empty rows inside this list in her sheet? Rows below move down; the Calculator's ranges widen to include them.")) return;
+    store.makeRoom(el.dataset.roomSec, el.dataset.roomType);
+    render();
+  });
+  on("[data-newmat]", "change", (el) => { const box = $("#" + el.dataset.newmat + "-newmat"); if (box) box.hidden = el.value !== "__new"; });
+  on("[data-menu-orphan]", "click", (el) => {
+    const doAdd = () => { store.addMenuItem("recipeMenu", { type: el.dataset.type, name: el.dataset.menuOrphan }); render(); };
+    try { doAdd(); } catch (err) { handleErr(err, "recipeMenu", el.dataset.type, doAdd); }
+  });
+  const v = (id) => $("#" + id)?.value ?? "";
+  const newMat = (prefix, name) => (v(prefix + "-mat") === "__new" ? { name, spec: { packSize: v(prefix + "-psize"), unit: v(prefix + "-punit"), packPrice: v(prefix + "-pprice") } } : { name: v(prefix + "-mat") });
+  on("[data-menu-add]", "click", (el) => {
+    const sec = el.dataset.menuAdd;
+    const doAdd = () => {
+      if (sec === "sizes") store.addMenuItem("sizes", { name: v("add-sizes-name").trim(), kg: v("add-sizes-kg"), servings: v("add-sizes-serv"), sellingPrice: v("add-sizes-sell") });
+      else if (sec === "layers") store.addMenuItem("layers", { value: v("add-layers-value") });
+      else if (sec === "toppings") {
+        const name = v("add-toppings-name").trim();
+        const m = newMat("add-toppings", name);
+        store.addMenuItem("toppings", { name, material: m.name, newMaterial: m.spec, fixedQty: v("add-toppings-fixed"), qtyPerKg: v("add-toppings-perkg"), sellingPrice: v("add-toppings-sell") });
+      } else if (sec === "boxes" || sec === "boards") {
+        store.addMenuItem(sec, { name: v(`add-${sec}-name`).trim(), newMaterial: { packSize: v(`add-${sec}-psize`), unit: "nos", packPrice: v(`add-${sec}-pprice`) }, sellingPrice: v(`add-${sec}-sell`) });
+      } else if (sec === "addons") {
+        const name = v("add-addons-name").trim();
+        const m = newMat("add-addons", name);
+        store.addMenuItem("addons", { name, material: m.name, newMaterial: m.spec, qty: v("add-addons-qty"), sellingPrice: v("add-addons-sell") });
+      }
+      render();
+    };
+    try { doAdd(); } catch (err) { handleErr(err, sec, undefined, doAdd); }
+  });
+
+  // ----- price went up -----
+  $("#pu-item")?.addEventListener("change", (e) => { location.hash = "#/price-up?item=" + encodeURIComponent(e.target.value); });
+  ["#pu-price", "#pu-size"].forEach((id) => $(id)?.addEventListener("input", renderImpact));
+  if ($("#pu-impact")) renderImpact();
+  $("#pu-save")?.addEventListener("click", () => {
+    const name = $("#pu-item").value;
+    const price = Number($("#pu-price").value), size = Number($("#pu-size").value);
+    if (!(price >= 0) || !(size > 0)) return alert("Enter the new pack price and pack size.");
+    store.priceWentUp(name, price, size);
+    const im = store.priceImpact(name, price, size);
+    $("#pu-msg").textContent = `Saved. ${im.recipes.length} recipe cost${im.recipes.length === 1 ? "" : "s"} and all new quotes now use ${rupees(price)} per pack.`;
+  });
+
+  // ----- recipes -----
+  on("[data-rdel]", "click", (el) => {
+    if (!confirm("Remove this ingredient line from the recipe?")) return;
+    store.removeRecipeLine(el.dataset.rdel);
+    render();
+  });
+  $("#r-notes")?.addEventListener("change", (e) => { store.setRecipeNotes(e.target.dataset.recipe, e.target.value, e.target.dataset.type); });
+  $("#rn-more")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const first = $(".rn-line");
+    const c = first.cloneNode(true);
+    c.querySelector("select").value = ""; c.querySelector("input").value = "";
+    $("#rn-lines").appendChild(c);
+  });
+  $("#rn-save")?.addEventListener("click", () => {
+    const lines = [...document.querySelectorAll(".rn-line")].map((r) => ({ ingredient: r.querySelector("select").value, qtyPerKg: Number(r.querySelector("input").value) }));
+    const name = $("#rn-name").value.trim(), type = $("#rn-type").value;
+    const doCreate = () => {
+      store.createRecipe({ name, type, lines, method: $("#rn-method").value.trim() });
+      location.hash = `#/recipes?recipe=${encodeURIComponent(name)}`;
+    };
+    try { doCreate(); } catch (err) {
+      if (err.full) handleErr(err, "recipeMenu", type, doCreate);
+      else $("#rn-msg").textContent = err.message;
+    }
+  });
+
+  // ----- inventory: purchases -----
+  $("#lp-item")?.addEventListener("change", (e) => { location.hash = "#/inventory?item=" + encodeURIComponent(e.target.value); });
+  $("#lp-save")?.addEventListener("click", () => {
+    try {
+      const rec = store.logPurchase({ item: $("#lp-item").value, packs: $("#lp-packs").value, pricePerPack: $("#lp-price").value, date: $("#lp-date").value, notes: $("#lp-note").value.trim() });
+      render();
+      $("#lp-msg") && ($("#lp-msg").textContent = `Added ${rec.qty} ${rec.unit} of ${rec.item}.`);
+    } catch (err) { handleErr(err); }
+  });
+
+  // ----- pricing rules + delivery zones -----
+  on("[data-rule]", "change", (el) => {
+    const r = (store.state.rules || []).find((x) => x.id === el.dataset.rule);
+    if (!r) return;
+    const f = el.dataset.field;
+    try { store.saveRule({ ...r, [f]: el.type === "checkbox" ? el.checked : el.value }); } catch (err) { handleErr(err); render(); }
+  });
+  on("[data-rule-del]", "click", (el) => { if (confirm("Remove this rule?")) { store.removeRule(el.dataset.ruleDel); render(); } });
+  $("#rule-add-rush")?.addEventListener("click", () => { try { store.saveRule({ name: uniqueName("Express / rush order", (store.state.rules || []).map((r) => r.name)), effect: "Charge", type: "%", amount: 20, active: true, applyTo: "When ticked" }); render(); } catch (err) { handleErr(err); } });
+  $("#rule-add-fest")?.addEventListener("click", () => { try { store.saveRule({ name: uniqueName("Festival discount", (store.state.rules || []).map((r) => r.name)), effect: "Discount", type: "%", amount: 10, active: false, applyTo: "Every order" }); render(); } catch (err) { handleErr(err); } });
+  on("[data-zone]", "change", (el) => {
+    const z = (store.state.zones || []).find((x) => x.id === el.dataset.zone);
+    if (!z) return;
+    try { store.saveZone({ ...z, [el.dataset.field]: el.value }); } catch (err) { handleErr(err); render(); }
+  });
+  on("[data-zone-del]", "click", (el) => { if (confirm("Remove this delivery zone?")) { store.removeZone(el.dataset.zoneDel); render(); } });
+  $("#zone-add")?.addEventListener("click", () => { try { store.saveZone({ name: $("#zone-name").value, charge: $("#zone-charge").value }); render(); } catch (err) { handleErr(err); } });
+
+  // ----- customers -----
+  $("#cust-search")?.addEventListener("input", (e) => { location.hash = "#/customers?q=" + encodeURIComponent(e.target.value); });
+  $("#nc-save")?.addEventListener("click", () => { try { store.saveCustomer({ name: $("#nc-name").value, phone: $("#nc-phone").value, notes: $("#nc-notes").value }); render(); } catch (err) { handleErr(err); } });
+  $("#cu-save")?.addEventListener("click", (e) => {
+    try {
+      const c = store.saveCustomer({ id: e.target.dataset.id || undefined, name: $("#cu-name").value, phone: $("#cu-phone").value, notes: $("#cu-notes").value });
+      location.hash = "#/customer/" + encodeURIComponent(c.id);
+      render();
+    } catch (err) { handleErr(err); }
+  });
+  $("#cu-del")?.addEventListener("click", (e) => { if (confirm("Remove from the customer list? Their orders stay.")) { store.removeCustomer(e.target.dataset.id); location.hash = "#/customers"; } });
+}
+function uniqueName(base, taken) {
+  let n = base, i = 2;
+  while (taken.includes(n)) n = `${base} ${i++}`;
+  return n;
 }
 
 let seedData;
