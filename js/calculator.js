@@ -83,9 +83,44 @@ export function suggestedHours(input, settings) {
   );
 }
 
+/** "750 g", "750g", "1.2 kg", "1.2kg", "1200 gm" -> kg (0 when it isn't a weight). */
+export function parseSizeKg(text) {
+  const m = String(text ?? "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?|\.\d+)\s*(kg|kgs|kilo|kilos|g|gm|gms|gram|grams)\b/);
+  if (!m) return 0;
+  const v = Number(m[1]);
+  return /^k/.test(m[2]) ? v : v / 1000;
+}
+
+/** Human size label in grams or kg: sizeLabel(0.75, "g") -> "750 g", sizeLabel(1.2, "kg") -> "1.2 kg". */
+export function sizeLabel(kg, unit = "kg") {
+  const k = Number(kg) || 0;
+  if (unit === "g") return `${Math.round(k * 1000 * 100) / 100} g`;
+  return `${Math.round(k * 1000) / 1000} kg`;
+}
+
+/** Servings for a manual size, scaled from the nearest preset ("~6-8"); "" when unknown. */
+export function estimateServings(kg, sizes = []) {
+  const k = Number(kg) || 0;
+  if (!(k > 0)) return "";
+  const exact = sizes.find((s) => Math.abs(Number(s.kg) - k) < 1e-9);
+  if (exact) return exact.servings || "";
+  let best = null;
+  for (const s of sizes) {
+    const m = String(s.servings || "").match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!m || !(Number(s.kg) > 0)) continue;
+    if (!best || Math.abs(Number(s.kg) - k) < Math.abs(best.kg - k)) best = { kg: Number(s.kg), lo: Number(m[1]), hi: Number(m[2] || m[1]) };
+  }
+  if (!best) return "";
+  const lo = Math.max(1, Math.round((best.lo * k) / best.kg)), hi = Math.max(lo, Math.round((best.hi * k) / best.kg));
+  return lo === hi ? `~${lo}` : `~${lo}-${hi}`;
+}
+
 export function sizeInfo(sizeName, settings) {
   const s = (settings.sizes || []).find((x) => x.name === sizeName);
-  return s || { name: sizeName, kg: 0, servings: "" };
+  if (s) return s;
+  // manual size typed on the order form ("750 g", "1.2 kg")
+  const kg = parseSizeKg(sizeName);
+  return { name: sizeName, kg, servings: kg ? estimateServings(kg, settings.sizes || []) : "", custom: !!kg };
 }
 
 export function toppingQty(toppingName, weightKg, settings) {

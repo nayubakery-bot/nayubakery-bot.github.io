@@ -32,3 +32,10 @@ All of these write back to the Google Sheet (or queue offline / stay on the phon
 - **Payments**: advance / balance / paid in full, one-tap status chips (Orders → `Payment status`, `Balance (₹)`).
 
 New tabs are created on first use with a bold frozen header; new Orders columns are appended to the right of the header row. Formula cells are never overwritten and existing cells never move (except via the opt-in "Make room"). New tabs need "Sign in with Google" mode (Apps Script mode reports them as sync notes).
+
+## v4: product categories + manual cake sizes
+- **Categories tab** (created on the first sync if missing, bold frozen header): `Category | Pricing | Unit price (₹) | Unit | Cost per unit (₹) | Active | Notes`, seeded with Cake (Calculator), Granola bar ₹90/bar, Cookies ₹90/cookie. Read on every load / ↻; edit in the sheet or in **Menu & prices → Categories** (add, rename, price, cost, show/hide, remove). Local mode / offline falls back to those three defaults.
+- **New order** (`#/order/new`) starts with a category picker; each category has its own screen at `#/order/new/<Category>`. "Calculator" categories show the full cake form; "Per unit" categories show customer + quantity (price = quantity × unit price; optional home-delivery charge).
+- **Cake size**: g / kg toggle (remembered on the phone) and "Custom size…" for a typed weight like 750 g or 1.2 kg. Saved in Orders → Size as typed ("750 g"); the calculator converts it to kg; servings are estimated from the nearest preset ("~6-9"). The sheet's own Calculator tab is untouched.
+- **Orders tab**: `Category`, `Quantity`, `Unit price (₹)` are appended to the right. Per-unit orders leave the cake-only columns blank; old rows with a blank Category read as Cake. Each order keeps the unit price it was sold at.
+- Dashboard (this month by category), Profit (By category), order lists and order screens show the category. Cost for per-unit items = quantity × Cost per unit (₹), or 0 when that's blank.

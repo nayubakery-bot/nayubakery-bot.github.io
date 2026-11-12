@@ -19,7 +19,7 @@ import {
   allRecipeCosts,
   recipeCostPerKg,
 } from "./calculator.js";
-import { parseWorkbook, orderToFields, compositeRecipeKey, newId, SECTIONS, paymentStatusOf } from "./sheet-model.js";
+import { parseWorkbook, orderToFields, compositeRecipeKey, newId, SECTIONS, paymentStatusOf, DEFAULT_CATEGORIES, categoryToFields, normalizeCategory } from "./sheet-model.js";
 
 const MENU_KEY = {
   sizes: (x) => x.name, layers: (x) => String(x), recipeMenu: (x) => x.name, toppings: (x) => x.name,
@@ -78,6 +78,7 @@ export class Store {
       settings: clone(this.seed.settings),
       library: clone(this.seed.library),
       orders: clone(this.seed.orders || []),
+      categories: clone(DEFAULT_CATEGORIES),
       customers: [],
       priceList: [],
       rules: [],
@@ -130,6 +131,14 @@ export class Store {
   applySheetGrid(grid) {
     const { state, problems } = parseWorkbook(grid);
     this._withKeys(state);
+    // Categories live in the sheet. First sync: create the Categories tab with the defaults.
+    let seedCategories = false;
+    if (!state.categoriesFromSheet) {
+      state.categories = clone(DEFAULT_CATEGORIES);
+      seedCategories = typeof this.sync?.transport?.ensureTabs === "function";
+    } else if (!state.categories.length) {
+      state.categories = clone(DEFAULT_CATEGORIES); // tab emptied by hand: keep the app usable, write nothing
+    }
     for (const o of state.orders) {
       const live = this.quote(o, state);
       o.quoteSnapshot = o.quoteSnapshot ? { ...live, ...o.quoteSnapshot } : live;
@@ -144,8 +153,9 @@ export class Store {
       this.state.orders.unshift(o);
       this._queueOrder(o, true);
     }
+    if (seedCategories) for (const c of state.categories) this._enqueue({ kind: "row", tab: "Categories", key: { name: c.name }, fields: categoryToFields(c) });
     this.persist();
-    return { problems, uploaded: local.length };
+    return { problems, uploaded: local.length, seededCategories: seedCategories };
   }
 
   _localOnlyOrders(sheetState) {
@@ -242,7 +252,69 @@ export class Store {
     return recipeCostPerKg(name, this.state.recipes, this.state.rawMaterials);
   }
 
+  // ---------- product categories ----------
+  get categories() {
+    const list = this.state.categories && this.state.categories.length ? this.state.categories : DEFAULT_CATEGORIES;
+    return list;
+  }
+  activeCategories() {
+    return this.categories.filter((c) => c.active !== false);
+  }
+  category(name, st = this.state) {
+    const list = st.categories && st.categories.length ? st.categories : DEFAULT_CATEGORIES;
+    const nm = String(name || "").trim().toLowerCase();
+    return list.find((c) => c.name.toLowerCase() === nm) || null;
+  }
+  /** Is this order (or category name) priced per unit rather than by the cake calculator? */
+  isUnitOrder(o, st = this.state) {
+    if (!o) return false;
+    if (o.quantity != null && o.quantity !== "") return true;
+    const c = this.category(o.category, st);
+    return !!(c && c.pricing !== "Calculator");
+  }
+  unitQuote(input, st = this.state) {
+    const c = this.category(input.category, st) || {};
+    const qty = Math.max(Number(input.quantity) || 0, 0);
+    const unitPrice = input.unitPrice != null && input.unitPrice !== "" ? Number(input.unitPrice) || 0 : Number(c.unitPrice) || 0;
+    const unitCost = input.unitCost != null && input.unitCost !== "" ? Number(input.unitCost) || 0 : Number(c.costPerUnit) || 0;
+    const subtotal = Math.round(qty * unitPrice * 100) / 100;
+    const delivery = Math.max(Number(input.deliveryCharge) || 0, 0);
+    const totalCost = Math.round(qty * unitCost * 100) / 100;
+    const finalQuote = subtotal + delivery;
+    return {
+      kind: "unit", category: input.category || c.name || "", unit: c.unit || "", quantity: qty, unitPrice, unitCost,
+      subtotal, delivery, finalQuote, totalCost, rawMaterialCost: totalCost, labour: 0, overheads: 0,
+      profit: Math.round((subtotal - totalCost) * 100) / 100, hoursUsed: 0, costKnown: unitCost > 0,
+    };
+  }
+  saveCategory(c, originalName) {
+    const list = (this.state.categories = this.state.categories && this.state.categories.length ? this.state.categories : clone(DEFAULT_CATEGORIES));
+    const rec = normalizeCategory({ ...c, active: c.active === false ? "No" : "Yes" });
+    if (!rec.name) throw new Error("Give the category a name");
+    const old = originalName ? list.find((x) => x.name === originalName) : null;
+    if (list.some((x) => x.name.toLowerCase() === rec.name.toLowerCase() && x !== old)) throw new Error(`“${rec.name}” is already a category`);
+    if (rec.pricing === "Per unit" && !(rec.unitPrice > 0)) throw new Error("Enter the price per unit");
+    if (old && old.pricing === "Calculator" && rec.pricing !== "Calculator" && list.filter((x) => x.pricing === "Calculator").length === 1) throw new Error("Keep at least one category on the cake calculator");
+    if (old) Object.assign(old, rec); else list.push(rec);
+    const key = { name: old ? originalName : rec.name };
+    const fields = { ...categoryToFields(rec) };
+    if (old && originalName !== rec.name) fields.name = rec.name;
+    this._enqueue({ kind: "row", tab: "Categories", key, fields });
+    this.persist();
+    return rec;
+  }
+  removeCategory(name) {
+    const list = this.state.categories || [];
+    const c = list.find((x) => x.name === name);
+    if (!c) return;
+    if (c.pricing === "Calculator" && list.filter((x) => x.pricing === "Calculator").length === 1) throw new Error("Keep at least one category on the cake calculator");
+    this.state.categories = list.filter((x) => x !== c);
+    this._enqueue({ kind: "row", tab: "Categories", key: { name }, remove: true });
+    this.persist();
+  }
+
   quote(input, st = this.state) {
+    if (this.isUnitOrder(input, st)) return this.unitQuote(input, st);
     return calculateQuote(input, {
       rawMaterials: st.rawMaterials, recipes: st.recipes, settings: st.settings,
       priceList: st.priceList || [], rules: st.rules || [], zones: st.zones || [],
@@ -338,7 +410,9 @@ export class Store {
 
   addOrder(order) {
     const id = order.id || newId("ORD");
+    if (this.isUnitOrder(order)) return this._addUnitOrder(order, id);
     const row = {
+      category: order.category || this.categories.find((c) => c.pricing === "Calculator")?.name || "Cake",
       id,
       createdAt: order.createdAt || new Date().toISOString(),
       customer: order.customer || "",
@@ -379,6 +453,37 @@ export class Store {
     return row;
   }
 
+  _addUnitOrder(order, id) {
+    const c = this.category(order.category) || {};
+    const qty = Number(order.quantity);
+    if (!(qty > 0)) throw new Error("Enter how many");
+    const row = {
+      id,
+      category: order.category || c.name || "",
+      quantity: qty,
+      unitPrice: order.unitPrice != null && order.unitPrice !== "" ? Number(order.unitPrice) : Number(c.unitPrice) || 0,
+      createdAt: order.createdAt || new Date().toISOString(),
+      customer: order.customer || "",
+      phone: order.phone || "",
+      size: "", layers: "", sponge: "", filling: "", frosting: "", topping1: "None", topping2: "None", topping3: "None",
+      box: "", board: "", candles: false, carryBag: false,
+      delivery: order.delivery || "Pickup",
+      deliveryCharge: Number(order.deliveryCharge || 0),
+      distanceKm: 0, hoursOverride: null, priceOverride: null, rules: [], zone: "", extraAddons: [],
+      deliveryDate: order.deliveryDate || "",
+      status: order.status || "Enquiry",
+      advancePaid: Number(order.advancePaid || 0),
+      notes: order.notes || "",
+      updatedAt: new Date().toISOString(),
+    };
+    row.quoteSnapshot = this.unitQuote(row);
+    this.state.orders.unshift(row);
+    this._queueOrder(row, true);
+    this._rememberCustomer(row);
+    this.persist();
+    return row;
+  }
+
   updateOrder(id, patch) {
     const i = this.state.orders.findIndex((o) => o.id === id);
     if (i < 0) return;
@@ -387,7 +492,7 @@ export class Store {
     const quoteFields = [
       "size","layers","sponge","filling","frosting","topping1","topping2","topping3",
       "box","board","candles","carryBag","delivery","distanceKm","hoursOverride",
-      "priceOverride","rules","zone","extraAddons",
+      "priceOverride","rules","zone","extraAddons","quantity","unitPrice","deliveryCharge","category",
     ];
     if (!patch.quoteSnapshot && (quoteFields.some((k) => k in patch) || recalculate)) {
       next.quoteSnapshot = this.quote(next);
@@ -856,7 +961,17 @@ export class Store {
     const week = orders.filter((o) => inRange(o, startOfWeek));
     const month = orders.filter((o) => inRange(o, startOfMonth));
     const pending = orders.filter((o) => !["Delivered", "Paid", "Cancelled"].includes(o.status));
+    const byCat = (list) => {
+      const m = new Map();
+      for (const o of list) {
+        const k = o.category || "Cake";
+        const c = m.get(k) || { category: k, orders: 0, revenue: 0 };
+        c.orders += 1; c.revenue += money(o).revenue; m.set(k, c);
+      }
+      return [...m.values()].sort((a, b) => b.revenue - a.revenue);
+    };
     const roll = (list) => ({
+      byCategory: byCat(list),
       count: list.length,
       revenue: sum(list, (o) => money(o).revenue),
       cost: sum(list, (o) => money(o).cost),
@@ -872,6 +987,23 @@ export class Store {
         .sort((a, b) => String(a.deliveryDate).localeCompare(String(b.deliveryDate)))
         .slice(0, 6),
     };
+  }
+
+  profitByCategory() {
+    const map = new Map();
+    for (const o of this.visibleOrders) {
+      if (o.status === "Cancelled") continue;
+      const key = o.category || "Cake";
+      const q = o.quoteSnapshot || {};
+      const cur = map.get(key) || { category: key, orders: 0, qty: 0, revenue: 0, cost: 0, profit: 0 };
+      cur.orders += 1;
+      if (this.isUnitOrder(o)) cur.qty += Number(o.quantity) || 0;
+      cur.revenue += Number(q.finalQuote || 0);
+      cur.cost += Number(q.totalCost || 0);
+      cur.profit += Number(q.profit || 0);
+      map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.revenue - a.revenue);
   }
 
   profitByMonth() {
@@ -930,6 +1062,7 @@ export function ordersToSheetRows(orders) {
     "Topping 1","Topping 2","Topping 3","Box","Board","Candles","Carry bag",
     "Delivery","Distance km","Delivery date","Status","Advance paid (₹)","Notes",
     "Quote (₹)","Cost (₹)","Profit (₹)","Hours","Raw material (₹)","Labour (₹)","Delivery charge (₹)",
+    "Category","Quantity","Unit price (₹)",
   ];
   const rows = orders.map((o) => {
     const q = o.quoteSnapshot || {};
@@ -938,6 +1071,7 @@ export function ordersToSheetRows(orders) {
       o.topping1, o.topping2, o.topping3, o.box, o.board, o.candles ? "Yes" : "No", o.carryBag ? "Yes" : "No",
       o.delivery, o.distanceKm, o.deliveryDate, o.status, o.advancePaid, o.notes,
       q.finalQuote, q.totalCost, q.profit, q.hoursUsed, q.rawMaterialCost, q.labour, q.delivery,
+      o.category || "Cake", o.quantity ?? "", o.unitPrice ?? "",
     ];
   });
   return [headers, ...rows];

@@ -14,6 +14,16 @@ export const CORE_TABS = ["Raw Materials", "Recipes", "Settings", "Inventory", "
 // saves something that has no home in the original workbook. Header row 1.
 // Columns are found by header name, so she can reorder them in the sheet.
 export const APP_TABS = {
+  // What she sells. "Calculator" = priced by the cake calculator (sizes, layers, sponge…);
+  // "Per unit" = quantity × Unit price (granola bars, cookies…).
+  Categories: {
+    key: ["name"],
+    cols: [
+      ["name", "Category", "str"], ["pricing", "Pricing", "str"], ["unitPrice", "Unit price (₹)", "num"],
+      ["unit", "Unit", "str"], ["costPerUnit", "Cost per unit (₹)", "num"], ["active", "Active", "str"],
+      ["notes", "Notes", "str"],
+    ],
+  },
   Customers: {
     key: ["id"],
     cols: [
@@ -49,6 +59,34 @@ export const APP_TABS = {
     ],
   },
 };
+// Seeded into a new Categories tab on the first sync (and used offline / in local mode).
+export const DEFAULT_CATEGORIES = [
+  { name: "Cake", pricing: "Calculator", unitPrice: 0, unit: "cake", costPerUnit: 0, active: true, notes: "Priced by the cake calculator (size, layers, sponge, toppings…)" },
+  { name: "Granola bar", pricing: "Per unit", unitPrice: 90, unit: "bar", costPerUnit: 0, active: true, notes: "" },
+  { name: "Cookies", pricing: "Per unit", unitPrice: 90, unit: "cookie", costPerUnit: 0, active: true, notes: "" },
+];
+export function categoryToFields(c) {
+  return {
+    pricing: c.pricing === "Calculator" ? "Calculator" : "Per unit",
+    unitPrice: c.pricing === "Calculator" ? "" : Number(c.unitPrice) || 0,
+    unit: c.unit || "",
+    costPerUnit: Number(c.costPerUnit) || 0,
+    active: c.active === false ? "No" : "Yes",
+    notes: c.notes || "",
+  };
+}
+export function normalizeCategory(r) {
+  return {
+    name: String(r.name || "").trim(),
+    pricing: /calc|cake/i.test(r.pricing || "") ? "Calculator" : "Per unit",
+    unitPrice: Number(r.unitPrice) || 0,
+    unit: r.unit || "",
+    costPerUnit: Number(r.costPerUnit) || 0,
+    active: !/^(no|n|false|0|off|inactive)$/i.test(String(r.active ?? "").trim()),
+    notes: r.notes || "",
+  };
+}
+
 // Read for layout only (the app never writes to it): its formulas and data
 // validations tell us how many rows of each Settings list the Calculator sees.
 export const READ_ONLY_TABS = ["Calculator"];
@@ -157,6 +195,9 @@ export const SPECS = {
       { field: "extraAddons", header: "Other add-ons" },
       { field: "paymentStatus", header: "Payment status" },
       { field: "balance", header: "Balance (₹)" },
+      { field: "category", header: "Category" },
+      { field: "quantity", header: "Quantity" },
+      { field: "unitPrice", header: "Unit price (₹)" },
     ],
     fields: {
       id: { h: ["id", "order id"], t: "str" },
@@ -196,6 +237,9 @@ export const SPECS = {
       extraAddons: { h: ["other add ons"], t: "str" },
       paymentStatus: { h: ["payment status"], t: "str" },
       balance: { h: ["balance"], t: "num" },
+      category: { h: ["category", "product"], t: "str" },
+      quantity: { h: ["quantity", "qty"], t: "str" },
+      unitPrice: { h: ["unit price", "price each"], t: "str" },
     },
   },
   "Recipe Library": {
@@ -522,6 +566,8 @@ export function parseWorkbook(grid) {
   state.capacity = ps.capacity;
   state.sheetTabs = Object.keys(grid.tabs || {});
 
+  state.categoriesFromSheet = !!grid.tabs?.Categories;
+  state.categories = parseAppTab(grid, "Categories").map(normalizeCategory).filter((c) => c.name);
   state.customers = parseAppTab(grid, "Customers");
   state.priceList = parseAppTab(grid, "Price List").filter((p) => p.item);
   state.rules = parseAppTab(grid, "Pricing Rules").map((r) => ({ ...r, effect: /disc/i.test(r.effect) ? "Discount" : "Charge", type: /₹|flat|rs|inr/i.test(r.type) ? "₹" : "%", applyTo: /tick|order form|choose/i.test(r.applyTo) ? "When ticked" : "Every order" }));
@@ -564,7 +610,11 @@ export function paymentStatusOf(paid, total) {
 }
 
 export function orderFromRow(r) {
+  const category = r.category || "Cake";
   const o = {
+    category,
+    quantity: blank(r.quantity) ? null : num(r.quantity),
+    unitPrice: blank(r.unitPrice) ? null : num(r.unitPrice),
     id: r.id, createdAt: r.createdAt, customer: r.customer, phone: r.phone, size: r.size,
     layers: r.layers || 2, sponge: r.sponge, filling: r.filling, frosting: r.frosting,
     topping1: r.topping1 || "None", topping2: r.topping2 || "None", topping3: r.topping3 || "None",
@@ -579,6 +629,10 @@ export function orderFromRow(r) {
     extraAddons: splitList(r.extraAddons),
     quoteSnapshot: null,
   };
+  if (!blank(r.quantity)) {
+    // per-unit order (granola bars, cookies…): no cake fields
+    Object.assign(o, { layers: "", topping1: "None", topping2: "None", topping3: "None", deliveryCharge: Number(r.deliveryCharge) || 0 });
+  }
   if (r.finalQuote) {
     o.quoteSnapshot = {
       finalQuote: r.finalQuote, totalCost: r.totalCost, profit: r.profit, hoursUsed: r.hoursUsed,
@@ -592,7 +646,26 @@ export function orderFromRow(r) {
 export function orderToFields(o) {
   const q = o.quoteSnapshot || {};
   const r2 = (x) => (isFinite(Number(x)) ? Math.round(Number(x) * 100) / 100 : "");
+  if (o.quantity != null && o.quantity !== "") {
+    // per-unit order: fill what applies, leave the cake-only columns blank
+    const total = Number(q.finalQuote) || 0;
+    return {
+      id: o.id, createdAt: o.createdAt, customer: o.customer || "", phone: o.phone || "",
+      size: "", layers: "", sponge: "", filling: "", frosting: "", topping1: "", topping2: "", topping3: "",
+      box: "", board: "", candles: "", carryBag: "",
+      delivery: o.delivery || "", distanceKm: "", deliveryDate: o.deliveryDate || "",
+      status: o.status || "Enquiry", advancePaid: Number(o.advancePaid) || 0, notes: o.notes || "",
+      finalQuote: r2(q.finalQuote), totalCost: r2(q.totalCost), profit: r2(q.profit), hoursUsed: "",
+      rawMaterialCost: r2(q.rawMaterialCost), labour: "", deliveryCharge: r2(q.delivery),
+      updatedAt: o.updatedAt || new Date().toISOString(),
+      hoursOverride: "", priceOverride: "", rulesApplied: "", deliveryZone: "", extraAddons: "",
+      paymentStatus: paymentStatusOf(o.advancePaid, total),
+      balance: r2(Math.max(total - (Number(o.advancePaid) || 0), 0)),
+      category: o.category || "", quantity: Number(o.quantity) || 0, unitPrice: r2(o.unitPrice),
+    };
+  }
   return {
+    category: o.category || "Cake", quantity: "", unitPrice: "",
     id: o.id, createdAt: o.createdAt, customer: o.customer || "", phone: o.phone || "", size: o.size || "",
     layers: Number(o.layers) || "", sponge: o.sponge || "", filling: o.filling || "", frosting: o.frosting || "",
     topping1: o.topping1 || "None", topping2: o.topping2 || "None", topping3: o.topping3 || "None",

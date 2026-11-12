@@ -239,3 +239,21 @@ input.mini.num { width: 64px; text-align: right; }
 .impact { background: var(--cream); border-radius: 14px; padding: 8px 12px; margin-top: 10px; }
 .btn[disabled] { opacity: 0.45; cursor: default; }
 a.btn { text-decoration: none; display: inline-block; }
+
+/* v4: product categories + manual cake sizes */
+.cat-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 8px 0 12px; }
+@media (min-width: 520px) { .cat-grid { grid-template-columns: repeat(3, 1fr); } }
+.cat-tile { text-align: left; background: var(--paper); border: 1.5px solid var(--line); border-radius: var(--radius); padding: 18px 16px; box-shadow: var(--shadow); cursor: pointer; color: var(--ink); font: inherit; }
+.cat-tile strong { display: block; font-size: 1.15rem; margin-bottom: 4px; }
+.cat-tile span { color: var(--ink-soft); font-size: 0.85rem; }
+.cat-tile:active { transform: scale(0.99); border-color: var(--terracotta); }
+.size-lbl { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 999px; overflow: hidden; background: #fff; }
+.seg button { border: 0; background: transparent; padding: 3px 10px; font-weight: 800; font-size: 0.78rem; color: var(--ink-soft); cursor: pointer; }
+.seg button.on { background: var(--ink); color: #fff; }
+.custom-size { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.custom-size input { flex: 1; }
+.custom-size .unit-tag { font-weight: 800; color: var(--ink-soft); min-width: 22px; }
+.qty-input { font-size: 1.3rem; font-weight: 800; }
+.pill.cat { background: #f3e2cf; color: var(--ink); }
+.cat-row .row-3 { align-items: end; }

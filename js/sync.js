@@ -156,7 +156,13 @@ export class SyncEngine {
       if (this.queue.length) await this.flush();
       this._set({ state: "syncing" });
       const grid = await this.transport.read();
+      const before = this.queue.length;
       this.onState(grid);
+      // loading may queue first-sync set-up (e.g. creating the Categories tab): send it now
+      if (this.queue.length > before) {
+        clearTimeout(this._timer);
+        await this.flush().catch(() => {});
+      }
       this._set({ state: this.queue.length ? "pending" : "synced", lastSynced: new Date().toISOString() });
       return grid;
     } catch (e) {

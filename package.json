@@ -1,1 +1,1 @@
-{"type":"module","scripts":{"test":"node tests/calculator.test.mjs && node tests/sync.test.mjs && node tests/v3.test.mjs","mock":"node tests/mock-sheets.mjs"}}
+{"type":"module","scripts":{"test":"node tests/calculator.test.mjs && node tests/sync.test.mjs && node tests/v3.test.mjs && node tests/v4.test.mjs","mock":"node tests/mock-sheets.mjs"}}

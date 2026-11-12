@@ -1,7 +1,7 @@
 import { PRICE_KINDS } from "./store.js";
 import { findAddon } from "./calculator.js";
 import { Store, checkPin, setPin, isUnlocked, unlockSession, lockSession, ordersToSheetRows, toCsv } from "./store.js";
-import { rupees, rupeesWhole, scaleRecipe } from "./calculator.js";
+import { rupees, rupeesWhole, scaleRecipe, parseSizeKg, sizeLabel, estimateServings } from "./calculator.js";
 import { SyncEngine, loadSyncConfig, saveSyncConfig, makeTransport, DEFAULT_SHEET_ID } from "./sync.js";
 import { cachedGoogleToken, signInWithGoogle, clearGoogleToken } from "./transports.js";
 
@@ -44,8 +44,15 @@ function fmtDate(iso) {
 }
 
 function cakeLabel(o) {
-  return `${o.size} ${o.sponge || ""}`.replace("Sponge", "").trim();
+  if (store.isUnitOrder(o)) {
+    return `${Number(o.quantity) || 0} × ${o.category || "Item"}`;
+  }
+  const cat = o.category && o.category !== "Cake" ? o.category + " · " : "";
+  return cat + `${o.size || ""} ${o.sponge || ""}`.replace("Sponge", "").trim();
 }
+function catSlug(name) { return encodeURIComponent(String(name || "").trim()); }
+const SIZE_UNIT_KEY = "bakery.v4.sizeUnit";
+function sizeUnitPref() { return localStorage.getItem(SIZE_UNIT_KEY) === "g" ? "g" : "kg"; }
 
 function iconSvg() {
   return `<img class="logo" src="./icons/icon-192.png" alt="" width="40" height="40">`;
@@ -143,13 +150,25 @@ function escapeHtml(s) {
 
 function calcInputsFromForm(form, settings) {
   const g = (n) => form.elements[n]?.value;
-  const size = g("size");
-  const sz = settings.sizes.find((s) => s.name === size);
+  let size = g("size");
+  let weightKg = 0, servings;
+  if (size === "__custom") {
+    const unit = g("sizeUnit") === "g" ? "g" : "kg";
+    const amt = Number(g("customSize"));
+    weightKg = amt > 0 ? (unit === "g" ? amt / 1000 : amt) : 0;
+    size = amt > 0 ? `${amt} ${unit}` : "";
+    servings = estimateServings(weightKg, settings.sizes);
+  } else {
+    const sz = settings.sizes.find((s) => s.name === size);
+    weightKg = sz ? sz.kg : parseSizeKg(size);
+  }
   return {
+    category: g("category") || "Cake",
     customer: g("customer"),
     phone: g("phone"),
     size,
-    weightKg: sz ? sz.kg : 0,
+    weightKg,
+    ...(servings !== undefined ? { servings } : {}),
     layers: Number(g("layers")),
     sponge: g("sponge"),
     filling: g("filling"),
@@ -193,7 +212,16 @@ function cakeForm(pre = {}, settings) {
   const shownRules = ruleList.filter((r) => r.active || ticked.includes(r.name));
   const custs = store.customerRows();
   const keep = (list, v) => (v && !list.includes(v) ? [...list, v] : list); // an old order keeps its removed option
+  // size: presets from the sheet, or a manual size in grams / kg
+  const presetNames = settings.sizes.map((x) => x.name);
+  const isCustom = p.size && !presetNames.includes(p.size) && parseSizeKg(p.size) > 0;
+  const unit = isCustom ? (/\d\s*k/i.test(p.size) ? "kg" : "g") : sizeUnitPref();
+  const customAmt = isCustom ? String(p.size).match(/[\d.]+/)[0] : "";
+  const sizeOpts = [...settings.sizes, ...(!isCustom && p.size && !presetNames.includes(p.size) ? [{ name: p.size, kg: 0 }] : [])]
+    .map((z) => `<option value="${escapeHtml(z.name)}" data-kg="${Number(z.kg) || 0}" ${!isCustom && z.name === p.size ? "selected" : ""}>${escapeHtml(unit === "g" && z.kg ? sizeLabel(z.kg, "g") : z.name)}</option>`).join("")
+    + `<option value="__custom" ${isCustom ? "selected" : ""}>Custom size…</option>`;
   return `<form id="cake-form">
+    <input type="hidden" name="category" value="${escapeHtml(p.category || "Cake")}">
     <datalist id="cust-list">${custs.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone || "")}</option>`).join("")}</datalist>
     <div class="card">
       <h2>Order details</h2>
@@ -214,7 +242,11 @@ function cakeForm(pre = {}, settings) {
     <div class="card" style="margin-top:12px">
       <h2>Cake</h2>
       <div class="row-2">
-        <div><label>Size</label><select name="size">${options(keep(settings.sizes.map(s=>s.name), p.size), p.size)}</select></div>
+        <div><label class="size-lbl">Size <span class="seg" id="size-unit" role="group" aria-label="Size unit"><button type="button" data-unit="g" class="${unit === "g" ? "on" : ""}">g</button><button type="button" data-unit="kg" class="${unit === "kg" ? "on" : ""}">kg</button></span></label>
+          <input type="hidden" name="sizeUnit" value="${unit}">
+          <select name="size">${sizeOpts}</select>
+          <div class="custom-size" id="custom-size" ${isCustom ? "" : "hidden"}><input name="customSize" type="number" min="0" step="any" inputmode="decimal" value="${escapeHtml(customAmt)}" placeholder="${unit === "g" ? "e.g. 750" : "e.g. 1.2"}"><span class="unit-tag">${unit}</span></div>
+          <p class="tiny" id="size-hint"></p></div>
         <div><label>Layers</label><select name="layers">${options(keep(settings.layers.map(String), String(p.layers)), String(p.layers))}</select></div>
       </div>
       <label>Sponge</label><select name="sponge">${options(keep(sponges, p.sponge), p.sponge)}</select>
@@ -250,6 +282,8 @@ function cakeForm(pre = {}, settings) {
 function renderLiveQuote(form) {
   const input = calcInputsFromForm(form, store.state.settings);
   const q = store.quote(input);
+  const hint = $("#size-hint");
+  if (hint) hint.textContent = input.weightKg > 0 ? `${sizeLabel(q.weightKg, "kg")} = ${sizeLabel(q.weightKg, "g")}${q.servings ? " · serves " + q.servings : ""}` : form.elements.size?.value === "__custom" ? "Type the cake weight" : "";
   $("#live-quote").innerHTML = `<div class="card">${quoteBox(q)}${breakdownTable(q)}</div>`;
   return { input, q };
 }
@@ -275,6 +309,7 @@ function viewDashboard() {
         <div><span class="muted">Profit</span><br><strong>${rupees(d.month.profit)}</strong></div>
         <div><span class="muted">Orders</span><br><strong>${d.month.count}</strong></div>
       </div>
+      ${d.month.byCategory.length > 1 || (d.month.byCategory[0] && d.month.byCategory[0].category !== "Cake") ? `<p class="tiny" style="margin-top:8px">${d.month.byCategory.map((c) => `${escapeHtml(c.category)}: ${c.orders} · ${rupeesWhole(c.revenue)}`).join(" &nbsp;·&nbsp; ")}</p>` : ""}
     </div>
     ${low.length ? `<div class="card" style="margin-top:14px"><h2>Low stock <span class="badge-count">${low.length}</span></h2>
       ${low.map(i => `<div class="inv-item" data-go="#/inventory"><strong>${escapeHtml(i.item)}</strong> <span class="pill reorder">REORDER</span><div class="meta">${i.current} ${i.unit} left · reorder at ${i.reorderLevel}</div></div>`).join("")}
@@ -307,11 +342,113 @@ function viewOrders() {
 }
 
 function viewOrderNew() {
-  const c = route.cust ? store.customerRows().find((x) => custKey(x) === route.cust) : null;
+  const cats = store.activeCategories();
+  const qs = route.cust ? `?cust=${encodeURIComponent(route.cust)}` : "";
+  if (route.cat) {
+    const cat = store.category(route.cat);
+    if (!cat) return `${topbar()}<p class="tiny"><a href="#/order/new${qs}">← Categories</a></p><p class="empty">“${escapeHtml(route.cat)}” isn't a category any more.</p>${nav("orders")}`;
+    return cat.pricing === "Calculator" ? viewOrderNewCake(cat) : viewOrderNewUnit(cat);
+  }
   return `${topbar()}<h2 class="page-title">New order</h2>
-    ${cakeForm(c ? { customer: c.name, phone: c.phone } : {}, store.state.settings)}
+    <p class="muted">What is she making?</p>
+    <div class="cat-grid">${cats.map((c) => `<button class="cat-tile" data-go="#/order/new/${catSlug(c.name)}${qs}">
+        <strong>${escapeHtml(c.name)}</strong>
+        <span>${c.pricing === "Calculator" ? "Size, layers, flavours, toppings" : `${rupeesWhole(c.unitPrice)} per ${escapeHtml(c.unit || "piece")}`}</span>
+      </button>`).join("") || `<p class="empty">No active categories. Add one in More → Menu &amp; prices.</p>`}</div>
+    <p class="tiny">Categories come from the <strong>Categories</strong> tab of her sheet${store.sheetMode ? "" : " (on this phone until the sheet is connected)"}; add or change them in <a href="#/menu">Menu &amp; prices</a>.</p>
+    ${nav("orders")}`;
+}
+function prefillCustomer() {
+  const c = route.cust ? store.customerRows().find((x) => custKey(x) === route.cust) : null;
+  return c ? { customer: c.name, phone: c.phone } : {};
+}
+function viewOrderNewCake(cat) {
+  const qs = route.cust ? `?cust=${encodeURIComponent(route.cust)}` : "";
+  return `${topbar()}<p class="tiny"><a href="#/order/new${qs}">← Categories</a></p><h2 class="page-title">New ${escapeHtml(cat.name.toLowerCase())} order</h2>
+    ${cakeForm({ ...prefillCustomer(), category: cat.name }, store.state.settings)}
     <div class="btn-row"><button class="btn" id="save-order">Save order</button><button class="btn secondary" data-go="#/orders">Cancel</button></div>
     ${nav("orders")}`;
+}
+function viewOrderNewUnit(cat) {
+  const qs = route.cust ? `?cust=${encodeURIComponent(route.cust)}` : "";
+  return `${topbar()}<p class="tiny"><a href="#/order/new${qs}">← Categories</a></p><h2 class="page-title">New ${escapeHtml(cat.name.toLowerCase())} order</h2>
+    ${unitForm({ ...prefillCustomer(), category: cat.name, unitPrice: cat.unitPrice })}
+    <div class="btn-row"><button class="btn" id="save-unit-order">Save order</button><button class="btn secondary" data-go="#/orders">Cancel</button></div>
+    ${nav("orders")}`;
+}
+
+/** Order form for per-unit categories (granola bars, cookies…): customer + quantity. */
+function unitForm(pre = {}) {
+  const cat = store.category(pre.category) || { name: pre.category, unit: "piece", unitPrice: pre.unitPrice };
+  const p = { quantity: 1, delivery: "Pickup", deliveryCharge: 0, status: "Enquiry", advancePaid: 0, ...pre };
+  const unitPrice = p.unitPrice != null && p.unitPrice !== "" ? Number(p.unitPrice) : Number(cat.unitPrice) || 0;
+  const custs = store.customerRows();
+  const u = cat.unit || "piece";
+  return `<form id="unit-form">
+    <input type="hidden" name="category" value="${escapeHtml(p.category)}">
+    <input type="hidden" name="unitPrice" value="${unitPrice}">
+    <datalist id="cust-list">${custs.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone || "")}</option>`).join("")}</datalist>
+    <div class="card">
+      <h2>${escapeHtml(p.category)}</h2>
+      <div class="row-2">
+        <div><label>How many ${escapeHtml(u)}s</label><input name="quantity" type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(p.quantity)}" class="qty-input" required></div>
+        <div><label>Price per ${escapeHtml(u)}</label><div class="meta" style="padding:10px 0"><strong>${rupeesWhole(unitPrice)}</strong> <span class="tiny">from the Categories tab</span></div></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>Order details</h2>
+      <div class="row-2">
+        <div><label>Customer</label><input name="customer" list="cust-list" autocomplete="off" value="${escapeHtml(p.customer || "")}" placeholder="Name (pick a saved one)" required></div>
+        <div><label>Phone</label><input name="phone" type="tel" value="${escapeHtml(p.phone || "")}" placeholder="WhatsApp number"></div>
+      </div>
+      <p class="tiny" id="cust-hint"></p>
+      <div class="row-2">
+        <div><label>Delivery date</label><input name="deliveryDate" type="date" value="${escapeHtml(p.deliveryDate || "")}"></div>
+        <div><label>Status</label><select name="status">${options(STATUSES, p.status)}</select></div>
+      </div>
+      <div class="row-2">
+        <div><label>Delivery</label><select name="delivery">${options(["Pickup", "Home delivery"], p.delivery)}</select></div>
+        <div><label>Delivery charge (₹)</label><input name="deliveryCharge" type="number" min="0" step="1" value="${Number(p.deliveryCharge) || 0}"></div>
+      </div>
+      <div class="row-2">
+        <div><label>Advance paid (₹)</label><input name="advancePaid" type="number" min="0" step="1" value="${p.advancePaid || 0}"></div>
+        <div><label>Notes</label><input name="notes" value="${escapeHtml(p.notes || "")}" placeholder="Flavour, packing, time"></div>
+      </div>
+    </div>
+    <div id="unit-quote" style="margin-top:12px"></div>
+  </form>`;
+}
+function unitInputsFromForm(form) {
+  const g = (n) => form.elements[n]?.value;
+  return {
+    category: g("category"), quantity: Number(g("quantity")) || 0, unitPrice: Number(g("unitPrice")) || 0,
+    customer: g("customer"), phone: g("phone"), deliveryDate: g("deliveryDate"), status: g("status") || "Enquiry",
+    delivery: g("delivery") || "Pickup", deliveryCharge: g("delivery") === "Home delivery" ? Number(g("deliveryCharge")) || 0 : 0,
+    advancePaid: Number(g("advancePaid") || 0), notes: g("notes"),
+  };
+}
+function unitQuoteBox(q) {
+  const u = q.unit || "piece";
+  return `<div class="quote-box">
+    <div class="lbl">Order total · ${escapeHtml(q.category)}</div>
+    <div class="quote-num">${rupeesWhole(q.finalQuote)}</div>
+    <div class="quote-grid">
+      <div><span>Quantity</span><br><strong>${q.quantity} ${escapeHtml(u)}${q.quantity === 1 ? "" : "s"}</strong></div>
+      <div><span>Price each</span><br><strong>${rupees(q.unitPrice)}</strong></div>
+      <div><span>Subtotal</span><br><strong>${rupees(q.subtotal)}</strong></div>
+      <div><span>Delivery</span><br><strong>${rupees(q.delivery)}</strong></div>
+      <div><span>Cost</span><br><strong>${q.costKnown || q.totalCost ? rupees(q.totalCost) : "not set"}</strong></div>
+      <div><span>Profit</span><br><strong>${rupees(q.profit)}</strong></div>
+    </div>
+  </div>
+  ${q.costKnown || q.totalCost ? "" : `<p class="tiny">Add a “Cost per unit” for ${escapeHtml(q.category)} in <a href="#/menu">Menu &amp; prices</a> to see real profit.</p>`}`;
+}
+function renderUnitQuote(form) {
+  const input = unitInputsFromForm(form);
+  const q = store.unitQuote(input);
+  const box = $("#unit-quote");
+  if (box) box.innerHTML = unitQuoteBox(q);
+  return { input, q };
 }
 
 const NEXT = { Enquiry: "Confirmed", Confirmed: "Baking", Baking: "Delivered", Delivered: "Paid" };
@@ -322,19 +459,47 @@ function payPill(o) {
   return `<span class="pill ${cls}">${p.status}${p.status !== "Paid in full" && p.balance ? " · due " + rupeesWhole(p.balance) : ""}</span>`;
 }
 
-function viewOrder(id) {
-  const o = store.state.orders.find((x) => x.id === id);
-  if (!o) return `${topbar()}<p>Order not found.</p>${nav("orders")}`;
-  const q = o.quoteSnapshot || store.quote(o);
-  const pay = store.paymentOf({ ...o, quoteSnapshot: q });
+function orderHead(o) {
   return `${topbar()}<h2 class="page-title">${escapeHtml(o.customer||"Order")}</h2>
-    <p class="meta">${o.id} · Created ${fmtDate(o.createdAt)}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ""}</p>
+    <p class="meta"><span class="pill cat">${escapeHtml(o.category || "Cake")}</span> ${o.id} · Created ${fmtDate(o.createdAt)}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ""}</p>
     <div class="card" style="margin-bottom:12px">
       <h2>Status</h2>
       <div class="chips" id="status-chips">${STATUSES.map((st) => `<button class="chip ${o.status === st ? "on" : ""}" data-set-status="${st}" data-id="${o.id}">${st}</button>`).join("")}</div>
+    </div>`;
+}
+function viewUnitOrder(o) {
+  const q = o.quoteSnapshot || store.quote(o);
+  return `${orderHead(o)}
+    ${unitQuoteBox(q)}
+    ${paymentCard(o, q)}
+    <div style="margin-top:12px">${unitForm(o)}</div>
+    <div class="btn-row">
+      <button class="btn" id="save-unit-order" data-id="${o.id}">Update order</button>
+      <button class="btn danger" id="delete-order" data-id="${o.id}">Delete</button>
     </div>
+    ${nav("orders")}`;
+}
+function viewOrder(id) {
+  const o = store.state.orders.find((x) => x.id === id);
+  if (!o) return `${topbar()}<p>Order not found.</p>${nav("orders")}`;
+  if (store.isUnitOrder(o)) return viewUnitOrder(o);
+  const q = o.quoteSnapshot || store.quote(o);
+  return `${orderHead(o)}
     ${quoteBox(q)}
-    <div class="card" style="margin-top:12px">
+    ${paymentCard(o, q)}
+    ${(() => { const live = store.quote(o); return q.fromSheet && Math.round(live.finalQuote) !== Math.round(q.finalQuote) ? `<p class="tiny warn-msg">Saved quote is ${rupeesWhole(q.finalQuote)} (from the sheet). With today’s prices it would be ${rupeesWhole(live.finalQuote)}. Tap “Update order” to re-price.</p>` : ""; })()}
+    ${cakeForm(o, store.state.settings)}
+    <div class="btn-row">
+      <button class="btn" id="save-order" data-id="${o.id}">Update order</button>
+      <button class="btn secondary" id="use-stock" data-id="${o.id}">Deduct ingredients from stock</button>
+      <button class="btn danger" id="delete-order" data-id="${o.id}">Delete</button>
+    </div>
+    <div class="card" style="margin-top:12px">${breakdownTable(q)}</div>
+    ${nav("orders")}`;
+}
+function paymentCard(o, q) {
+  const pay = store.paymentOf({ ...o, quoteSnapshot: q });
+  return `<div class="card" style="margin-top:12px">
       <h2>Payment ${payPill({ ...o, quoteSnapshot: q })}</h2>
       <div class="quote-grid" style="color:inherit">
         <div><span class="muted">Order total</span><br><strong>${rupees(pay.total)}</strong></div>
@@ -348,16 +513,7 @@ function viewOrder(id) {
       </div>
       <div class="btn-row"><button class="btn sage" id="pay-full" data-id="${o.id}" ${pay.balance ? "" : "disabled"}>Paid in full</button></div>
       <p class="tiny">Saved in the Orders tab: “Advance paid (₹)” is the total received; “Payment status” and “Balance (₹)” are filled in for you.</p>
-    </div>
-    ${(() => { const live = store.quote(o); return q.fromSheet && Math.round(live.finalQuote) !== Math.round(q.finalQuote) ? `<p class="tiny warn-msg">Saved quote is ${rupeesWhole(q.finalQuote)} (from the sheet). With today’s prices it would be ${rupeesWhole(live.finalQuote)}. Tap “Update order” to re-price.</p>` : ""; })()}
-    ${cakeForm(o, store.state.settings)}
-    <div class="btn-row">
-      <button class="btn" id="save-order" data-id="${o.id}">Update order</button>
-      <button class="btn secondary" id="use-stock" data-id="${o.id}">Deduct ingredients from stock</button>
-      <button class="btn danger" id="delete-order" data-id="${o.id}">Delete</button>
-    </div>
-    <div class="card" style="margin-top:12px">${breakdownTable(q)}</div>
-    ${nav("orders")}`;
+    </div>`;
 }
 
 function viewCalculator() {
@@ -497,6 +653,9 @@ function viewProfit() {
       <div class="card"><div class="stat-lbl">All-time profit</div><div class="stat-val">${rupeesWhole(tot.p)}</div></div>
       <div class="card"><div class="stat-lbl">Orders</div><div class="stat-val">${all.length}</div></div>
     </div>
+    ${(() => { const cats = store.profitByCategory(); return cats.length > 1 || (cats[0] && cats[0].category !== "Cake") ? `<div class="card" style="margin-top:12px"><h2>By category</h2><table class="breakdown"><thead><tr><th>Category</th><th class="num">Orders</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>
+        ${cats.map((m) => `<tr><td>${escapeHtml(m.category)}${m.qty ? `<div class="tiny">${m.qty} sold</div>` : ""}</td><td class="num">${m.orders}</td><td class="num">${rupees(m.revenue)}</td><td class="num">${rupees(m.cost)}</td><td class="num">${rupees(m.profit)}</td></tr>`).join("")}
+      </tbody></table></div>` : ""; })()}
     <div class="card" style="margin-top:12px"><h2>By month</h2>
       ${months.length ? `<table class="breakdown"><thead><tr><th>Month</th><th class="num">Orders</th><th class="num">Revenue</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>
         ${months.map(m=>`<tr><td>${m.month}</td><td class="num">${m.orders}</td><td class="num">${rupees(m.revenue)}</td><td class="num">${rupees(m.cost)}</td><td class="num">${rupees(m.profit)}</td></tr>`).join("")}
@@ -504,7 +663,7 @@ function viewProfit() {
     </div>
     <div class="card" style="margin-top:12px"><h2>Per order</h2>
       ${all.length ? `<table class="breakdown"><thead><tr><th>Order</th><th>Status</th><th class="num">Quote</th><th class="num">Cost</th><th class="num">Profit</th></tr></thead><tbody>
-        ${all.map(o=>`<tr data-go="#/order/${o.id}" style="cursor:pointer"><td>${escapeHtml(o.customer||o.id)}<div class="tiny">${fmtDate(o.deliveryDate||o.createdAt)}</div></td><td><span class="pill ${o.status}">${o.status}</span></td><td class="num">${rupees(o.quoteSnapshot?.finalQuote||0)}</td><td class="num">${rupees(o.quoteSnapshot?.totalCost||0)}</td><td class="num">${rupees(o.quoteSnapshot?.profit||0)}</td></tr>`).join("")}
+        ${all.map(o=>`<tr data-go="#/order/${o.id}" style="cursor:pointer"><td>${escapeHtml(o.customer||o.id)}<div class="tiny">${escapeHtml(cakeLabel(o))} · ${fmtDate(o.deliveryDate||o.createdAt)}</div></td><td><span class="pill ${o.status}">${o.status}</span></td><td class="num">${rupees(o.quoteSnapshot?.finalQuote||0)}</td><td class="num">${rupees(o.quoteSnapshot?.totalCost||0)}</td><td class="num">${rupees(o.quoteSnapshot?.profit||0)}</td></tr>`).join("")}
       </tbody></table>` : `<p class="empty">No orders yet.</p>`}
     </div>
     ${nav("more")}`;
@@ -560,7 +719,7 @@ function viewMore() {
   const low = store.lowStock().length;
   return `${topbar()}<h2 class="page-title">More</h2>
     <div class="more-grid">
-      <button class="more-tile" data-go="#/menu"><strong>Menu &amp; prices</strong><span>Sizes, layers, flavours, toppings, boxes, add-ons</span></button>
+      <button class="more-tile" data-go="#/menu"><strong>Menu &amp; prices</strong><span>Categories, sizes, flavours, toppings, boxes, add-ons</span></button>
       <button class="more-tile" data-go="#/price-up"><strong>Price went up?</strong><span>Update an item's cost and see the effect</span></button>
       <button class="more-tile" data-go="#/customers"><strong>Customers</strong><span>Phone numbers and past orders</span></button>
       <button class="more-tile" data-go="#/pricing"><strong>Rules &amp; delivery</strong><span>Rush charges, discounts, delivery zones</span></button>
@@ -763,10 +922,29 @@ function viewMenu() {
       <div><label>Qty per cake</label><input id="add-addons-qty" type="number" min="0" step="any" value="1"></div>
       <div><label>Selling price (₹)</label><input id="add-addons-sell" type="number" min="0" step="1" placeholder="optional"></div>
     </div>${newMatFields("add-addons", "nos")}<div class="btn-row"><button class="btn secondary" data-menu-add="addons">Add add-on</button></div></div>`;
+  const catRows = store.categories.map((c) => `<div class="mrow cat-row">
+      <div class="row-3">
+        <div><label>Category</label><input data-cat="${escapeHtml(c.name)}" data-field="name" value="${escapeHtml(c.name)}"></div>
+        <div><label>Pricing</label><select data-cat="${escapeHtml(c.name)}" data-field="pricing">${["Calculator", "Per unit"].map((x) => `<option value="${x}" ${c.pricing === x ? "selected" : ""}>${x === "Calculator" ? "Cake calculator" : "Per unit"}</option>`).join("")}</select></div>
+        ${c.pricing === "Calculator" ? `<div><label>Price</label><div class="meta" style="padding:10px 0">From sizes &amp; recipes below</div></div>` : `
+        <div><label>Price per unit (₹)</label><input type="number" min="0" step="1" data-cat="${escapeHtml(c.name)}" data-field="unitPrice" value="${c.unitPrice}"></div>
+        <div><label>Unit</label><input data-cat="${escapeHtml(c.name)}" data-field="unit" value="${escapeHtml(c.unit)}" placeholder="bar, cookie, box"></div>
+        <div><label>Cost per unit (₹)</label><input type="number" min="0" step="any" data-cat="${escapeHtml(c.name)}" data-field="costPerUnit" value="${c.costPerUnit || ""}" placeholder="optional"></div>`}
+        <div><label>On the order screen</label><label class="check" style="margin:8px 0 0"><input type="checkbox" data-cat="${escapeHtml(c.name)}" data-field="active" ${c.active !== false ? "checked" : ""}> Show</label></div>
+      </div><button class="x-btn" data-cat-del="${escapeHtml(c.name)}" aria-label="Remove ${escapeHtml(c.name)}">✕</button></div>`).join("");
+  const addCat = `<div class="addbox"><div class="row-3">
+      <div><label>New category</label><input id="add-cat-name" placeholder="e.g. Brownies"></div>
+      <div><label>Price per unit (₹)</label><input id="add-cat-price" type="number" min="0" step="1" placeholder="e.g. 90"></div>
+      <div><label>Unit</label><input id="add-cat-unit" placeholder="e.g. brownie"></div>
+      <div><label>Cost per unit (₹)</label><input id="add-cat-cost" type="number" min="0" step="any" placeholder="optional"></div>
+    </div><div class="btn-row"><button class="btn secondary" id="add-cat">Add category</button></div></div>`;
   return `${topbar()}<h2 class="page-title">Menu &amp; prices</h2>
     <p class="muted">Everything the order form offers. Changes are saved${store.sheetMode ? " to the Settings and Price List tabs of her sheet" : " on this phone"} and show up in the order form straight away.</p>
     <p class="tiny"><strong>Selling price</strong> is optional. When a size has one, quotes use her menu price (size price + each extra’s selling price, or its cost + markup when it has none). Leave sizes blank to keep the cost-plus calculator.</p>
     <p id="menu-msg" class="ok-msg"></p>
+    <div class="card" style="margin-top:12px"><h2>Categories</h2>
+      <p class="tiny">What she sells. Each one gets its own screen under New order. “Per unit” = quantity × price per unit; “Cake calculator” uses the sizes and recipes below.${store.sheetMode ? " Saved to the Categories tab." : ""}</p>
+      ${catRows}${addCat}</div>
     ${card("Cake sizes", sizes + addSize, "sizes")}
     ${card("Layers", layers, "layers")}
     ${recipeCard("Sponge", "Sponges")}
@@ -939,7 +1117,7 @@ function parseHash() {
   const [path, qs] = h.split("?");
   const parts = path.split("/").filter(Boolean);
   const qp = new URLSearchParams(qs || "");
-  if (parts[0] === "order" && parts[1] === "new") return { name: "order-new", cust: qp.get("cust") || "" };
+  if (parts[0] === "order" && parts[1] === "new") return { name: "order-new", cat: parts[2] ? decodeURIComponent(parts.slice(2).join("/")) : "", cust: qp.get("cust") || "" };
   if (parts[0] === "customer" && parts[1]) return { name: "customer", id: decodeURIComponent(parts.slice(1).join("/")) };
   if (["price-up", "recipe-new", "inventory", "customers"].includes(parts[0])) return { name: parts[0], item: qp.get("item") || "", type: qp.get("type") || "", q: qp.get("q") || "" };
   if (parts[0] === "order" && parts[1]) return { name: "order", id: parts[1] };
@@ -1010,11 +1188,48 @@ function bindLogin() {
 }
 
 function hookQuoteForm() {
+  const uform = $("#unit-form");
+  if (uform) {
+    const upd = () => renderUnitQuote(uform);
+    uform.addEventListener("input", upd);
+    uform.addEventListener("change", upd);
+    upd();
+  }
   const form = $("#cake-form");
   if (!form) return;
   const update = () => renderLiveQuote(form);
   form.addEventListener("input", update);
   form.addEventListener("change", update);
+  // size: presets or a manual size, shown in grams or kg
+  const sizeSel = form.elements.size, box = $("#custom-size"), amt = form.elements.customSize;
+  sizeSel?.addEventListener("change", () => {
+    box.hidden = sizeSel.value !== "__custom";
+    if (!box.hidden) {
+      if (!amt.value) { const prev = sizeSel.dataset.prevKg; if (prev) amt.value = form.elements.sizeUnit.value === "g" ? Math.round(prev * 1000) : prev; }
+      amt.focus();
+    } else sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || "";
+    update();
+  });
+  sizeSel && (sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || "");
+  $("#size-unit")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-unit]");
+    if (!b) return;
+    e.preventDefault();
+    const to = b.dataset.unit, from = form.elements.sizeUnit.value;
+    if (to === from) return;
+    localStorage.setItem(SIZE_UNIT_KEY, to);
+    form.elements.sizeUnit.value = to;
+    document.querySelectorAll("#size-unit [data-unit]").forEach((x) => x.classList.toggle("on", x.dataset.unit === to));
+    for (const o of sizeSel.options) {
+      if (o.value === "__custom") continue;
+      const kg = Number(o.dataset.kg);
+      o.textContent = to === "g" && kg ? sizeLabel(kg, "g") : o.value;
+    }
+    if (amt.value) amt.value = String(Math.round((to === "g" ? Number(amt.value) * 1000 : Number(amt.value) / 1000) * 1000) / 1000);
+    amt.placeholder = to === "g" ? "e.g. 750" : "e.g. 1.2";
+    $("#custom-size .unit-tag").textContent = to;
+    update();
+  });
   update();
 }
 
@@ -1044,6 +1259,18 @@ function bindPage() {
     const payload = { ...input, quoteSnapshot: q };
     if (id) store.updateOrder(id, { ...payload, recalculate: true });
     else store.addOrder(payload);
+    location.hash = "#/orders";
+  });
+  $("#save-unit-order")?.addEventListener("click", () => {
+    const form = $("#unit-form");
+    const { input, q } = renderUnitQuote(form);
+    if (!(input.quantity > 0)) { alert("Enter how many."); return; }
+    if (!String(input.customer || "").trim()) { alert("Enter the customer's name."); return; }
+    const id = $("#save-unit-order").dataset.id;
+    try {
+      if (id) store.updateOrder(id, { ...input, quoteSnapshot: q });
+      else store.addOrder(input);
+    } catch (err) { alert(err.message || String(err)); return; }
     location.hash = "#/orders";
   });
   $("#save-quote-order")?.addEventListener("click", () => {
@@ -1265,7 +1492,7 @@ function handleErr(err, section, type, retry) {
 function bindV3() {
   const on = (sel, ev, fn) => document.querySelectorAll(sel).forEach((el) => el.addEventListener(ev, (e) => fn(el, e)));
   // ----- order form: customer quick-fill -----
-  const form = $("#cake-form");
+  const form = $("#cake-form") || $("#unit-form");
   if (form) {
     const nameEl = form.elements.customer, phoneEl = form.elements.phone, hint = $("#cust-hint");
     const fill = (c) => {
@@ -1344,6 +1571,33 @@ function bindV3() {
       render();
     };
     try { doAdd(); } catch (err) { handleErr(err, sec, undefined, doAdd); }
+  });
+
+  // ----- product categories -----
+  on("[data-cat]", "change", (el) => {
+    const name = el.dataset.cat, f = el.dataset.field;
+    const c = store.category(name);
+    if (!c) return;
+    const val = el.type === "checkbox" ? el.checked : el.value;
+    if (f === "name" && !String(val).trim()) { el.value = name; return; }
+    try {
+      const next = { ...c, [f]: val };
+      if (f === "pricing" && val === "Per unit" && !(Number(c.unitPrice) > 0)) next.unitPrice = 90;
+      store.saveCategory(next, name);
+      render();
+      $("#menu-msg") && ($("#menu-msg").textContent = `Saved ${next.name}.`);
+    } catch (err) { handleErr(err); render(); }
+  });
+  on("[data-cat-del]", "click", (el, e) => {
+    e.preventDefault();
+    if (!confirm(`Remove the “${el.dataset.catDel}” category? Old orders keep it.`)) return;
+    try { store.removeCategory(el.dataset.catDel); render(); } catch (err) { handleErr(err); }
+  });
+  $("#add-cat")?.addEventListener("click", () => {
+    try {
+      store.saveCategory({ name: v("add-cat-name"), pricing: "Per unit", unitPrice: v("add-cat-price"), unit: v("add-cat-unit").trim() || "piece", costPerUnit: v("add-cat-cost"), active: true });
+      render();
+    } catch (err) { handleErr(err); }
   });
 
   // ----- price went up -----
