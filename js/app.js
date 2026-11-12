@@ -1207,7 +1207,7 @@ function hookQuoteForm() {
     if (!box.hidden) {
       if (!amt.value) { const prev = sizeSel.dataset.prevKg; if (prev) amt.value = form.elements.sizeUnit.value === "g" ? Math.round(prev * 1000) : prev; }
       amt.focus();
-    } else sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || "";
+    } else { sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || ""; amt.value = ""; }
     update();
   });
   sizeSel && (sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || "");

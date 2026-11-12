@@ -252,6 +252,7 @@ a.btn { text-decoration: none; display: inline-block; }
 .seg button { border: 0; background: transparent; padding: 3px 10px; font-weight: 800; font-size: 0.78rem; color: var(--ink-soft); cursor: pointer; }
 .seg button.on { background: var(--ink); color: #fff; }
 .custom-size { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.custom-size[hidden], [hidden] { display: none !important; }
 .custom-size input { flex: 1; }
 .custom-size .unit-tag { font-weight: 800; color: var(--ink-soft); min-width: 22px; }
 .qty-input { font-size: 1.3rem; font-weight: 800; }
