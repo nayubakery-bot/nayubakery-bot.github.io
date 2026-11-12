@@ -115,12 +115,57 @@ export function estimateServings(kg, sizes = []) {
   return lo === hi ? `~${lo}` : `~${lo}-${hi}`;
 }
 
+/** Match a preset size by weight (within 0.5 g), so "500 g" and "0.5" in kg mode equal "0.5 kg". */
+export function findSizeByKg(kg, sizes = []) {
+  const k = Number(kg);
+  if (!(k > 0)) return null;
+  return (sizes || []).find((s) => Math.abs(Number(s.kg) - k) < 5e-4) || null;
+}
+
+/**
+ * Resolve a typed or picked size from the order form.
+ * Preset by name or by weight (including a bare number in `unit`); otherwise a custom weight.
+ * Saved `size` is the preset name, or a string like "750 g".
+ */
+export function resolveSizeInput(text, unit = "kg", sizes = []) {
+  const raw = String(text ?? "").trim();
+  const u = unit === "g" ? "g" : "kg";
+  if (!raw) return { size: "", weightKg: 0, servings: "", custom: false, valid: false };
+  const lower = raw.toLowerCase();
+  const byName = (sizes || []).find((s) => s.name === raw || String(s.name).toLowerCase() === lower
+    || (Number(s.kg) > 0 && (sizeLabel(s.kg, "g") === raw || sizeLabel(s.kg, "kg") === raw)));
+  if (byName) {
+    const kg = Number(byName.kg) || 0;
+    return { size: byName.name, weightKg: kg, servings: byName.servings || "", custom: false, valid: kg > 0 };
+  }
+  let kg = parseSizeKg(raw);
+  let typedUnit = null;
+  if (kg > 0) {
+    typedUnit = /\d\s*k/i.test(raw) ? "kg" : "g";
+  } else {
+    const m = raw.match(/^(\d+(?:\.\d+)?|\.\d+)$/);
+    if (m && Number(m[1]) > 0) {
+      const v = Number(m[1]);
+      kg = u === "g" ? v / 1000 : v;
+      typedUnit = u;
+    }
+  }
+  if (!(kg > 0)) return { size: "", weightKg: 0, servings: "", custom: false, valid: false };
+  const match = findSizeByKg(kg, sizes);
+  if (match) return { size: match.name, weightKg: Number(match.kg), servings: match.servings || "", custom: false, valid: true };
+  return { size: sizeLabel(kg, typedUnit || u), weightKg: kg, servings: estimateServings(kg, sizes), custom: true, valid: true };
+}
+
 export function sizeInfo(sizeName, settings) {
-  const s = (settings.sizes || []).find((x) => x.name === sizeName);
+  const sizes = settings.sizes || [];
+  const s = sizes.find((x) => x.name === sizeName);
   if (s) return s;
-  // manual size typed on the order form ("750 g", "1.2 kg")
+  // manual size typed on the order form ("750 g", "1.2 kg"), or a preset written in the other unit
   const kg = parseSizeKg(sizeName);
-  return { name: sizeName, kg, servings: kg ? estimateServings(kg, settings.sizes || []) : "", custom: !!kg };
+  if (!(kg > 0)) return { name: sizeName, kg: 0, servings: "", custom: false };
+  const match = findSizeByKg(kg, sizes);
+  if (match) return match;
+  return { name: sizeName, kg, servings: estimateServings(kg, sizes), custom: true };
 }
 
 export function toppingQty(toppingName, weightKg, settings) {
@@ -234,7 +279,7 @@ export function calculateQuote(input, data) {
     const p = priceList.find((x) => x.kind === kind && x.item === item);
     return p && p.price !== "" && p.price != null && isFinite(Number(p.price)) && Number(p.price) > 0 ? Number(p.price) : null;
   };
-  const sizePrice = sell("Size", input.size);
+  const sizePrice = sell("Size", size.name);
   let menu = null;
   if (sizePrice != null) {
     const withMarkup = (cost) => cost * (1 + markup);

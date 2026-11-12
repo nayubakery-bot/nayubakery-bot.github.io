@@ -10,7 +10,7 @@ globalThis.sessionStorage = { getItem() { return null; }, setItem() {}, removeIt
 const { Store } = await import("../js/store.js");
 const { SyncEngine } = await import("../js/sync.js");
 const { GoogleSheetsTransport } = await import("../js/transports.js");
-const { parseSizeKg, sizeInfo, calculateQuote, estimateServings } = await import("../js/calculator.js");
+const { parseSizeKg, sizeInfo, calculateQuote, estimateServings, resolveSizeInput } = await import("../js/calculator.js");
 const seed = JSON.parse(readFileSync(new URL("../js/seed-data.json", import.meta.url)));
 
 let failed = 0, passed = 0;
@@ -32,6 +32,22 @@ const qPreset = calculateQuote(seed.sampleOrder, data);
 check(q500.finalQuote === qPreset.finalQuote && qPreset.finalQuote === 780, "500 g manual prices the same as the 0.5 kg preset (₹780)", [q500.finalQuote, qPreset.finalQuote]);
 const q12 = calculateQuote({ ...seed.sampleOrder, size: "1.2 kg" }, data);
 check(q12.weightKg === 1.2 && q12.finalQuote > qPreset.finalQuote && q12.weightOk, "1.2 kg manual: calculator scales, weight check OK", [q12.weightKg, q12.finalQuote]);
+check(sizeInfo("500 g", S).name === "0.5 kg" && !sizeInfo("500 g", S).custom, "sizeInfo maps 500 g to the 0.5 kg preset");
+
+console.log("\n=== pure: resolveSizeInput (combobox) ===");
+const R = (text, unit="kg") => resolveSizeInput(text, unit, S.sizes);
+check(R("0.5 kg").size === "0.5 kg" && !R("0.5 kg").custom, "preset name stays the preset");
+check(R("500 g").size === "0.5 kg" && !R("500 g").custom && R("500 g").servings === "4-6", "500 g matches the 0.5 kg preset");
+check(R("500", "g").size === "0.5 kg" && !R("500", "g").custom, "bare 500 in g mode matches 0.5 kg");
+check(R("0.5", "kg").size === "0.5 kg" && !R("0.5", "kg").custom, "bare 0.5 in kg mode matches 0.5 kg");
+check(R("500 g", "kg").size === "0.5 kg", "explicit unit wins over the toggle");
+const r750g = R("750", "g");
+check(r750g.custom && r750g.size === "750 g" && r750g.weightKg === 0.75 && /^~\d+-\d+$/.test(r750g.servings), "bare 750 in g mode is a custom 750 g", r750g);
+const r12 = R("1.2", "kg");
+check(r12.custom && r12.size === "1.2 kg" && r12.weightKg === 1.2, "bare 1.2 in kg mode is a custom 1.2 kg", r12);
+check(R("1.2 kg", "g").size === "1.2 kg" && R("1.2 kg", "g").custom, "1.2 kg stays custom even in g mode");
+check(!R("").valid && !R("abc").valid && !R("0", "g").valid, "empty, text and zero are invalid");
+check(R("750g").size === "750 g" && R("750g").custom, "750g normalises to 750 g");
 
 // ---------------- sheet mode ----------------
 const mock = await startMock();

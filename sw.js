@@ -1,6 +1,6 @@
 // v2: app shell only. Sheet data (Apps Script / Google APIs) is never cached:
 // cross-origin requests and anything that isn't a GET bypass the service worker.
-const CACHE = "rise-whisk-v4-1-sizefix";
+const CACHE = "rise-whisk-v4-2-sizecombo";
 const PRECACHE = [
   "./",
   "./index.html",

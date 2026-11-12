@@ -1,7 +1,7 @@
 import { PRICE_KINDS } from "./store.js";
 import { findAddon } from "./calculator.js";
 import { Store, checkPin, setPin, isUnlocked, unlockSession, lockSession, ordersToSheetRows, toCsv } from "./store.js";
-import { rupees, rupeesWhole, scaleRecipe, parseSizeKg, sizeLabel, estimateServings } from "./calculator.js";
+import { rupees, rupeesWhole, scaleRecipe, parseSizeKg, sizeLabel, resolveSizeInput } from "./calculator.js";
 import { SyncEngine, loadSyncConfig, saveSyncConfig, makeTransport, DEFAULT_SHEET_ID } from "./sync.js";
 import { cachedGoogleToken, signInWithGoogle, clearGoogleToken } from "./transports.js";
 
@@ -150,18 +150,11 @@ function escapeHtml(s) {
 
 function calcInputsFromForm(form, settings) {
   const g = (n) => form.elements[n]?.value;
-  let size = g("size");
-  let weightKg = 0, servings;
-  if (size === "__custom") {
-    const unit = g("sizeUnit") === "g" ? "g" : "kg";
-    const amt = Number(g("customSize"));
-    weightKg = amt > 0 ? (unit === "g" ? amt / 1000 : amt) : 0;
-    size = amt > 0 ? `${amt} ${unit}` : "";
-    servings = estimateServings(weightKg, settings.sizes);
-  } else {
-    const sz = settings.sizes.find((s) => s.name === size);
-    weightKg = sz ? sz.kg : parseSizeKg(size);
-  }
+  const unit = g("sizeUnit") === "g" ? "g" : "kg";
+  const resolved = resolveSizeInput(g("size"), unit, settings.sizes);
+  const size = resolved.size;
+  const weightKg = resolved.weightKg;
+  const servings = resolved.custom ? resolved.servings : undefined;
   return {
     category: g("category") || "Cake",
     customer: g("customer"),
@@ -212,14 +205,13 @@ function cakeForm(pre = {}, settings) {
   const shownRules = ruleList.filter((r) => r.active || ticked.includes(r.name));
   const custs = store.customerRows();
   const keep = (list, v) => (v && !list.includes(v) ? [...list, v] : list); // an old order keeps its removed option
-  // size: presets from the sheet, or a manual size in grams / kg
+  // size: one field — pick a preset or type a weight, shown in grams or kg
   const presetNames = settings.sizes.map((x) => x.name);
   const isCustom = p.size && !presetNames.includes(p.size) && parseSizeKg(p.size) > 0;
   const unit = isCustom ? (/\d\s*k/i.test(p.size) ? "kg" : "g") : sizeUnitPref();
-  const customAmt = isCustom ? String(p.size).match(/[\d.]+/)[0] : "";
-  const sizeOpts = [...settings.sizes, ...(!isCustom && p.size && !presetNames.includes(p.size) ? [{ name: p.size, kg: 0 }] : [])]
-    .map((z) => `<option value="${escapeHtml(z.name)}" data-kg="${Number(z.kg) || 0}" ${!isCustom && z.name === p.size ? "selected" : ""}>${escapeHtml(unit === "g" && z.kg ? sizeLabel(z.kg, "g") : z.name)}</option>`).join("")
-    + `<option value="__custom" ${isCustom ? "selected" : ""}>Custom size…</option>`;
+  const resolved = resolveSizeInput(p.size, unit, settings.sizes);
+  const sizeDisplay = resolved.valid ? sizeLabel(resolved.weightKg, unit) : (p.size || "");
+  const sizeItems = settings.sizes.map((z) => `<li role="option" data-name="${escapeHtml(z.name)}" data-kg="${Number(z.kg) || 0}">${escapeHtml(z.kg ? sizeLabel(z.kg, unit) : z.name)}</li>`).join("");
   return `<form id="cake-form">
     <input type="hidden" name="category" value="${escapeHtml(p.category || "Cake")}">
     <datalist id="cust-list">${custs.map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.phone || "")}</option>`).join("")}</datalist>
@@ -244,8 +236,11 @@ function cakeForm(pre = {}, settings) {
       <div class="row-2">
         <div><label class="size-lbl">Size <span class="seg" id="size-unit" role="group" aria-label="Size unit"><button type="button" data-unit="g" class="${unit === "g" ? "on" : ""}">g</button><button type="button" data-unit="kg" class="${unit === "kg" ? "on" : ""}">kg</button></span></label>
           <input type="hidden" name="sizeUnit" value="${unit}">
-          <select name="size">${sizeOpts}</select>
-          <div class="custom-size" id="custom-size" ${isCustom ? "" : "hidden"}><input name="customSize" type="number" min="0" step="any" inputmode="decimal" value="${escapeHtml(customAmt)}" placeholder="${unit === "g" ? "e.g. 750" : "e.g. 1.2"}"><span class="unit-tag">${unit}</span></div>
+          <div class="size-combo" id="size-combo">
+            <input name="size" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="size-menu" aria-label="Cake size" value="${escapeHtml(sizeDisplay)}" placeholder="${unit === "g" ? "e.g. 750 g" : "e.g. 1.2 kg"}">
+            <button type="button" class="size-chevron" id="size-chevron" aria-label="Choose a size" aria-controls="size-menu" aria-expanded="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <ul class="size-menu" id="size-menu" role="listbox" hidden>${sizeItems}</ul>
+          </div>
           <p class="tiny" id="size-hint"></p></div>
         <div><label>Layers</label><select name="layers">${options(keep(settings.layers.map(String), String(p.layers)), String(p.layers))}</select></div>
       </div>
@@ -283,7 +278,7 @@ function renderLiveQuote(form) {
   const input = calcInputsFromForm(form, store.state.settings);
   const q = store.quote(input);
   const hint = $("#size-hint");
-  if (hint) hint.textContent = input.weightKg > 0 ? `${sizeLabel(q.weightKg, "kg")} = ${sizeLabel(q.weightKg, "g")}${q.servings ? " · serves " + q.servings : ""}` : form.elements.size?.value === "__custom" ? "Type the cake weight" : "";
+  if (hint) hint.textContent = input.weightKg > 0 ? `${sizeLabel(q.weightKg, "kg")} = ${sizeLabel(q.weightKg, "g")}${q.servings ? " · serves " + q.servings : ""}` : "Type the cake weight";
   $("#live-quote").innerHTML = `<div class="card">${quoteBox(q)}${breakdownTable(q)}</div>`;
   return { input, q };
 }
@@ -1200,17 +1195,50 @@ function hookQuoteForm() {
   const update = () => renderLiveQuote(form);
   form.addEventListener("input", update);
   form.addEventListener("change", update);
-  // size: presets or a manual size, shown in grams or kg
-  const sizeSel = form.elements.size, box = $("#custom-size"), amt = form.elements.customSize;
-  sizeSel?.addEventListener("change", () => {
-    box.hidden = sizeSel.value !== "__custom";
-    if (!box.hidden) {
-      if (!amt.value) { const prev = sizeSel.dataset.prevKg; if (prev) amt.value = form.elements.sizeUnit.value === "g" ? Math.round(prev * 1000) : prev; }
-      amt.focus();
-    } else { sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || ""; amt.value = ""; }
+  hookSizeCombo(form, update);
+  update();
+}
+
+let sizeComboDocAborts;
+function hookSizeCombo(form, update) {
+  const input = form.elements.size;
+  const combo = $("#size-combo");
+  const menu = $("#size-menu");
+  const chevron = $("#size-chevron");
+  if (!input || !menu || !combo) return;
+  const setOpen = (open) => {
+    menu.hidden = !open;
+    combo.classList.toggle("open", open);
+    input.setAttribute("aria-expanded", open ? "true" : "false");
+    chevron?.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  const close = () => setOpen(false);
+  const open = () => setOpen(true);
+  chevron?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    menu.hidden ? open() : close();
+  });
+  menu.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus on the input
+  menu.addEventListener("click", (e) => {
+    const li = e.target.closest("li[data-name]");
+    if (!li) return;
+    const unit = form.elements.sizeUnit.value === "g" ? "g" : "kg";
+    const kg = Number(li.dataset.kg);
+    input.value = kg ? sizeLabel(kg, unit) : li.dataset.name;
+    close();
     update();
   });
-  sizeSel && (sizeSel.dataset.prevKg = sizeSel.selectedOptions[0]?.dataset.kg || "");
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { close(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); open(); }
+  });
+  sizeComboDocAborts?.abort();
+  const ac = new AbortController();
+  sizeComboDocAborts = ac;
+  document.addEventListener("pointerdown", (e) => {
+    if (!combo.contains(e.target)) close();
+  }, { capture: true, signal: ac.signal });
   $("#size-unit")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-unit]");
     if (!b) return;
@@ -1220,17 +1248,15 @@ function hookQuoteForm() {
     localStorage.setItem(SIZE_UNIT_KEY, to);
     form.elements.sizeUnit.value = to;
     document.querySelectorAll("#size-unit [data-unit]").forEach((x) => x.classList.toggle("on", x.dataset.unit === to));
-    for (const o of sizeSel.options) {
-      if (o.value === "__custom") continue;
-      const kg = Number(o.dataset.kg);
-      o.textContent = to === "g" && kg ? sizeLabel(kg, "g") : o.value;
+    for (const li of menu.querySelectorAll("li[data-kg]")) {
+      const kg = Number(li.dataset.kg);
+      if (kg) li.textContent = sizeLabel(kg, to);
     }
-    if (amt.value) amt.value = String(Math.round((to === "g" ? Number(amt.value) * 1000 : Number(amt.value) / 1000) * 1000) / 1000);
-    amt.placeholder = to === "g" ? "e.g. 750" : "e.g. 1.2";
-    $("#custom-size .unit-tag").textContent = to;
+    const resolved = resolveSizeInput(input.value, from, store.state.settings.sizes);
+    if (resolved.valid) input.value = sizeLabel(resolved.weightKg, to);
+    input.placeholder = to === "g" ? "e.g. 750 g" : "e.g. 1.2 kg";
     update();
   });
-  update();
 }
 
 function bindPage() {
@@ -1255,6 +1281,7 @@ function bindPage() {
   $("#save-order")?.addEventListener("click", () => {
     const form = $("#cake-form");
     const { input, q } = renderLiveQuote(form);
+    if (!(input.weightKg > 0)) { alert("Type the cake weight"); return; }
     const id = $("#save-order").dataset.id;
     const payload = { ...input, quoteSnapshot: q };
     if (id) store.updateOrder(id, { ...payload, recalculate: true });
@@ -1276,6 +1303,7 @@ function bindPage() {
   $("#save-quote-order")?.addEventListener("click", () => {
     const form = $("#cake-form");
     const { input, q } = renderLiveQuote(form);
+    if (!(input.weightKg > 0)) { alert("Type the cake weight"); return; }
     if (!input.customer) input.customer = "Quote";
     store.addOrder({ ...input, status: input.status || "Enquiry", quoteSnapshot: q });
     location.hash = "#/orders";
@@ -1285,6 +1313,11 @@ function bindPage() {
     const form = $("#cake-form");
     for (const [k, v] of Object.entries({ size: s.size, layers: s.layers, sponge: s.sponge, filling: s.filling, frosting: s.frosting, topping1: "None", topping2: "None", topping3: "None", box: s.box, board: s.board, delivery: s.delivery, distanceKm: s.distanceKm })) {
       if (form.elements[k]) form.elements[k].value = v;
+    }
+    if (form.elements.size && s.size) {
+      const unit = form.elements.sizeUnit?.value === "g" ? "g" : "kg";
+      const r = resolveSizeInput(s.size, unit, store.state.settings.sizes);
+      if (r.valid) form.elements.size.value = sizeLabel(r.weightKg, unit);
     }
     form.elements.candles.checked = !!s.candles;
     form.elements.carryBag.checked = !!s.carryBag;
